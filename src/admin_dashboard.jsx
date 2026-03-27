@@ -45,8 +45,7 @@ export default function AdminDashboard() {
   ];
   const serviceList = ['カット', 'カラー', 'パーマ', 'トリートメント', 'セット'];
   const ADMIN_PASSWORD = 'salon2024'; // ← 本番環境では環境変数に移す
-  const BACKEND_URL = 'https://script.google.com/macros/d/{DEPLOYMENT_ID}/usercallable';
-
+  const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwj9Q0wnJ05Tlf4V9gG20qhRMf1YSEmmzFXFC_osPSDFuSckGjIp3k8qiRF29JOHlnn-A/exec';
   // ========== ローカルストレージ初期化 ==========
   useEffect(() => {
     const saved = localStorage.getItem('adminPassword');
