@@ -209,7 +209,11 @@ export default function BookingCalendarUI() {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
             />
             <button
-              onClick={() => setFormData({...formData, customerName: formData.customerName || 'ゲスト'})}
+              onClick={() => {
+                              const name = formData.customerName || 'ゲスト';
+                              setFormData({...formData, customerName: name});
+                             setUserInfo({ name: name, userId: null, pictureUrl: null });
+                            }}
               className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold py-3 rounded-lg hover:shadow-lg transition-all"
             >
               ゲストで続行
