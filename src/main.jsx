@@ -8,8 +8,14 @@ const params = new URLSearchParams(window.location.search)
 const isAdmin = params.get('admin') === 'true'
 const isHistory = params.get('history') === 'true'
 
+function App() {
+  if (isHistory) return <HistoryDashboard />
+  if (isAdmin) return <AdminDashboard />
+  return <BookingCalendarUI />
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    {isHistory ? <HistoryDashboard /> : isAdmin ? <AdminDashboard /> : <BookingCalendarUI />}
+    <App />
   </React.StrictMode>
 )
