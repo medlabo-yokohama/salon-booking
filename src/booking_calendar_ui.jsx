@@ -34,7 +34,7 @@ export default function BookingCalendarUI() {
   ];
   const serviceList = ['カット', 'カラー', 'パーマ', 'トリートメント', 'セット'];
 
-  const BACKEND_URL = 'https://script.google.com/macros/d/{DEPLOYMENT_ID}/usercallable';
+  const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwj9Q0wnJ05Tlf4V9gG20qhRMf1YSEmmzFXFC_osPSDFuSckGjIp3k8qiRF29JOHlnn-A/exec';
 
   // ========== 初期化 & LINE Login対応 ==========
   useEffect(() => {
