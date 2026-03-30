@@ -13,8 +13,8 @@ import React, { useState, useEffect } from 'react';
  */
 
 // ========== 設定 ==========
-const LIFF_ID = 'YOUR_LIFF_ID'; // ← LINE Developers から取得
-const BACKEND_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+const LIFF_ID = '2009651620-UveMatZR'; // ← LINE Developers から取得
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwj9Q0wnJ05Tlf4V9gG20qhRMf1YSEmmzFXFC_osPSDFuSckGjIp3k8qiRF29JOHlnn-A/exec';
 const SALON_NAME = '横浜医療専門学校附属鍼灸院・接骨院';
 
 export default function LineLiffBooking() {
