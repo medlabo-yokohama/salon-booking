@@ -1,410 +1,252 @@
+// ============================================================
+// history_dashboard.jsx
+// 過去データ分析・施術者別集計・CSVエクスポート
+// ============================================================
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Download, Search, Calendar, TrendingUp } from 'lucide-react';
 
-/**
- * 過去データ確認ダッシュボード
- * 機能:
- * - 年選択で過去データ表示
- * - 統計情報（月別、スタイリスト別など）
- * - CSVエクスポート
- */
+const GAS_URL = import.meta.env.VITE_GAS_URL || '';
+
+async function apiGet(params) {
+  const url = new URL(GAS_URL);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  return (await fetch(url.toString())).json();
+}
+
+const C = { primary: '#1a4f8a', primaryPale: '#dbeafe', accent: '#0ea5e9', success: '#059669', warning: '#f59e0b', danger: '#dc2626', border: '#cbd5e1', text: '#1e293b', muted: '#64748b', surface: '#fff', bg: '#f0f4f8' };
+
+const S = {
+  app: { fontFamily: "'Noto Sans JP', sans-serif", background: C.bg, minHeight: '100vh', fontSize: 13 },
+  header: { background: C.primary, color: '#fff', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 12 },
+  body: { padding: '20px 24px' },
+  card: { background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '16px 20px', marginBottom: 16 },
+  gridTbl: { width: '100%', borderCollapse: 'collapse', background: C.surface },
+  th: { background: C.primary, color: '#fff', padding: '8px 12px', fontSize: 12.5, fontWeight: 500, textAlign: 'center', border: `1px solid ${C.border}` },
+  td: { border: `1px solid ${C.border}`, padding: '8px 12px', fontSize: 12.5 },
+  btn: (v) => {
+    const variants = { primary: { background: C.primary, color: '#fff' }, success: { background: C.success, color: '#fff' }, gray: { background: '#e2e8f0', color: C.text } };
+    return { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 16px', border: 'none', borderRadius: 6, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', ...(variants[v] || variants.primary) };
+  },
+  filterRow: { display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 14 },
+  filterLabel: { display: 'block', fontSize: 11.5, fontWeight: 600, color: C.muted, marginBottom: 4 },
+  filterInput: { border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', fontFamily: 'inherit', fontSize: 12.5, background: '#f8fafc' },
+  dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 },
+  dashCard: (color) => ({ background: C.surface, borderRadius: 6, padding: '14px 16px', borderTop: `3px solid ${color}`, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }),
+  sectionTitle: { fontSize: 14, fontWeight: 700, color: C.primary, marginBottom: 12, paddingBottom: 6, borderBottom: `2px solid ${C.primaryPale}` },
+};
+
 export default function HistoryDashboard() {
-  // ========== 状態管理 ==========
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [availableYears, setAvailableYears] = useState([]);
   const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // all, confirmed, cancelled
-  const [message, setMessage] = useState('');
+  const [staffList, setStaffList] = useState([]);
+  const [menuList, setMenuList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate]   = useState('');
+  const [filterStaff, setFilterStaff] = useState('');
 
-  const BACKEND_URL = 'https://script.google.com/macros/d/{DEPLOYMENT_ID}/usercallable';
-
-  // ========== 初期化 ==========
   useEffect(() => {
-    fetchAvailableYears();
+    Promise.all([
+      apiGet({ action: 'getBookings' }).then(r => r.success && setBookings(r.data.bookings)),
+      apiGet({ action: 'getStaff'    }).then(r => r.success && setStaffList(r.data.staff)),
+      apiGet({ action: 'getMenus'    }).then(r => r.success && setMenuList(r.data.menus)),
+    ]).then(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (availableYears.length > 0) {
-      fetchBookingsByYear(selectedYear);
-    }
-  }, [selectedYear, availableYears]);
-
-  // ========== データ取得 ==========
-  const fetchAvailableYears = async () => {
-    try {
-      const response = await fetch(
-        `${BACKEND_URL}?action=getAvailableYears`
-      );
-      const data = await response.json();
-      if (data.success) {
-        setAvailableYears(data.years || []);
-        if (data.years && data.years.length > 0) {
-          setSelectedYear(data.years[0]); // 最新年を選択
-        }
-      }
-    } catch (error) {
-      console.error('年一覧取得エラー:', error);
-      setMessage('年一覧の取得に失敗しました');
-    }
-  };
-
-  const fetchBookingsByYear = async (year) => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `${BACKEND_URL}?action=getAllBookingsByYear&year=${year}`
-      );
-      const data = await response.json();
-      if (data.success) {
-        setBookings(data.bookings || []);
-      }
-    } catch (error) {
-      console.error('予約データ取得エラー:', error);
-      setMessage('予約データの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ========== フィルター処理 ==========
-  const filteredBookings = bookings.filter(booking => {
-    const matchSearch = 
-      booking.customerName.includes(searchTerm) ||
-      booking.staff.includes(searchTerm) ||
-      booking.customerPhone.includes(searchTerm);
-    
-    const matchStatus = 
-      filterStatus === 'all' || 
-      booking.status === filterStatus;
-    
-    return matchSearch && matchStatus;
+  // フィルタ適用
+  const filtered = bookings.filter(b => {
+    if (fromDate && b.datetime < fromDate) return false;
+    if (toDate   && b.datetime > toDate + ' 23:59') return false;
+    if (filterStaff && b.staffId !== filterStaff) return false;
+    return true;
   });
 
-  // ========== 統計計算 ==========
-  const calculateStats = () => {
-    const stats = {
-      totalBookings: filteredBookings.length,
-      confirmedBookings: filteredBookings.filter(b => b.status === 'confirmed').length,
-      cancelledBookings: filteredBookings.filter(b => b.status === 'cancelled').length,
-      uniqueCustomers: new Set(filteredBookings.map(b => b.customerName)).size,
-    };
+  // 施術者別集計
+  const staffSummary = staffList.map(s => {
+    const staffBookings = filtered.filter(b => b.staffId === s.staffId && b.status !== 'キャンセル');
+    return { ...s, count: staffBookings.length };
+  });
 
-    // スタイリスト別集計
-    const staffStats = {};
-    filteredBookings.forEach(booking => {
-      if (!staffStats[booking.staff]) {
-        staffStats[booking.staff] = 0;
-      }
-      staffStats[booking.staff]++;
-    });
+  // メニュー別集計
+  const menuSummary = menuList.map(m => {
+    const count = filtered.filter(b => b.menuId === m.menuId && b.status !== 'キャンセル').length;
+    return { ...m, count };
+  });
 
-    // メニュー別集計
-    const serviceStats = {};
-    filteredBookings.forEach(booking => {
-      if (!serviceStats[booking.service]) {
-        serviceStats[booking.service] = 0;
-      }
-      serviceStats[booking.service]++;
-    });
+  // 月別集計
+  const monthlySummary = {};
+  filtered.filter(b => b.status !== 'キャンセル').forEach(b => {
+    const ym = b.datetime?.substring(0, 7);
+    if (ym) monthlySummary[ym] = (monthlySummary[ym] || 0) + 1;
+  });
 
-    // 月別集計
-    const monthStats = {};
-    filteredBookings.forEach(booking => {
-      const month = booking.dateTime.toString().substring(0, 7); // YYYY-MM
-      if (!monthStats[month]) {
-        monthStats[month] = 0;
-      }
-      monthStats[month]++;
-    });
+  const totalCount = filtered.filter(b => b.status !== 'キャンセル').length;
+  const cancelCount = filtered.filter(b => b.status === 'キャンセル').length;
 
-    return { stats, staffStats, serviceStats, monthStats };
-  };
-
-  const { stats, staffStats, serviceStats, monthStats } = calculateStats();
-
-  // ========== CSVエクスポート ==========
-  const exportToCSV = () => {
-    const headers = ['予約ID', '予約日時', '顧客名', '電話番号', 'メール', 'スタイリスト', 'メニュー', 'ステータス', 'ご要望'];
-    
-    const rows = filteredBookings.map(booking => [
-      booking.bookingId,
-      booking.dateTime,
-      booking.customerName,
-      booking.customerPhone,
-      booking.customerEmail,
-      booking.staff,
-      booking.service,
-      booking.status,
-      booking.note || '',
-    ]);
-
-    const csv = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
-    ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+  // CSVエクスポート
+  const handleExport = () => {
+    const headers = ['予約ID', '日時', '顧客名', '施術者ID', 'メニューID', '電話番号', 'メール', 'ステータス'];
+    const rows = filtered.map(b => [b.bookingId, b.datetime, b.userName, b.staffId, b.menuId, b.userPhone, b.userEmail, b.status]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `booking_${selectedYear}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    setMessage('✓ CSVをダウンロードしました');
-    setTimeout(() => setMessage(''), 3000);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `予約データ分析_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  // ========== UI ==========
+  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>読み込み中...</div>;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* ヘッダー */}
-      <div className="bg-white shadow-lg sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">📊 過去データ確認ダッシュボード</h1>
-          <p className="text-gray-600 text-sm mt-1">過去の予約データを確認・分析できます</p>
-        </div>
+    <div style={S.app}>
+      <div style={S.header}>
+        <h2 style={{ fontSize: 18, fontWeight: 700 }}>📊 過去データ分析</h2>
+        <a href="/" style={{ marginLeft: 'auto', color: 'rgba(255,255,255,.7)', fontSize: 12, textDecoration: 'none' }}>← 管理画面へ戻る</a>
       </div>
-
-      {/* メッセージ */}
-      {message && (
-        <div className={`max-w-7xl mx-auto mt-4 p-4 rounded-lg ${
-          message.includes('✓') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {message}
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto p-4 space-y-4">
-        {/* 年選択と操作パネル */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            {/* 年選択 */}
-            <div className="flex-1">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                📅 対象年を選択
-              </label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
-              >
-                {availableYears.map(year => (
-                  <option key={year} value={year}>
-                    {year}年
-                  </option>
-                ))}
+      <div style={S.body}>
+        {/* フィルタパネル */}
+        <div style={S.card}>
+          <div style={S.filterRow}>
+            <div>
+              <label style={S.filterLabel}>開始日</label>
+              <input style={S.filterInput} type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            </div>
+            <div>
+              <label style={S.filterLabel}>終了日</label>
+              <input style={S.filterInput} type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+            </div>
+            <div>
+              <label style={S.filterLabel}>担当者</label>
+              <select style={S.filterInput} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
+                <option value="">全員</option>
+                {staffList.map(s => <option key={s.staffId} value={s.staffId}>{s.name}</option>)}
               </select>
             </div>
-
-            {/* ステータスフィルタ */}
-            <div className="flex-1">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                ステータス
-              </label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">全て</option>
-                <option value="confirmed">確定</option>
-                <option value="cancelled">キャンセル</option>
-              </select>
-            </div>
-
-            {/* エクスポートボタン */}
-            <button
-              onClick={exportToCSV}
-              disabled={filteredBookings.length === 0}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 flex items-center gap-2"
-            >
-              <Download size={18} /> CSV
-            </button>
-          </div>
-
-          {/* 検索 */}
-          <div className="mt-4">
-            <input
-              type="text"
-              placeholder="顧客名・スタイリスト・電話番号で検索"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
+            <button style={S.btn('gray')} onClick={() => { setFromDate(''); setToDate(''); setFilterStaff(''); }}>リセット</button>
+            <button style={{ ...S.btn('success'), marginLeft: 'auto' }} onClick={handleExport}>📥 CSVエクスポート</button>
           </div>
         </div>
 
-        {/* 統計情報 */}
-        {!loading && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* 総予約数 */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">総予約数</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalBookings}</p>
-                </div>
-                <Calendar className="text-blue-500" size={32} />
-              </div>
-            </div>
-
-            {/* 確定予約 */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">確定予約</p>
-                  <p className="text-3xl font-bold text-green-600 mt-1">{stats.confirmedBookings}</p>
-                </div>
-                <div className="text-2xl">✅</div>
-              </div>
-            </div>
-
-            {/* キャンセル */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">キャンセル</p>
-                  <p className="text-3xl font-bold text-red-600 mt-1">{stats.cancelledBookings}</p>
-                </div>
-                <div className="text-2xl">❌</div>
-              </div>
-            </div>
-
-            {/* ユニーク顧客 */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">ユニーク顧客</p>
-                  <p className="text-3xl font-bold text-purple-600 mt-1">{stats.uniqueCustomers}</p>
-                </div>
-                <div className="text-2xl">👥</div>
-              </div>
+        {/* サマリーカード */}
+        <div style={S.dashGrid}>
+          <div style={S.dashCard(C.primary)}>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>総予約件数</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: C.primary, fontFamily: 'monospace' }}>{totalCount}</div>
+            <div style={{ fontSize: 10.5, color: C.muted }}>件（キャンセル除く）</div>
+          </div>
+          <div style={S.dashCard(C.danger)}>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>キャンセル件数</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: C.danger, fontFamily: 'monospace' }}>{cancelCount}</div>
+            <div style={{ fontSize: 10.5, color: C.muted }}>件</div>
+          </div>
+          <div style={S.dashCard(C.success)}>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>キャンセル率</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: C.success, fontFamily: 'monospace' }}>
+              {filtered.length > 0 ? Math.round(cancelCount / filtered.length * 100) : 0}%
             </div>
           </div>
-        )}
+        </div>
 
-        {/* スタイリスト別集計 */}
-        {!loading && Object.keys(staffStats).length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp size={24} /> スタイリスト別集計
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {Object.entries(staffStats)
-                .sort((a, b) => b[1] - a[1])
-                .map(([staff, count]) => (
-                  <div key={staff} className="p-4 border border-gray-300 rounded-lg">
-                    <p className="font-semibold text-gray-900">{staff}</p>
-                    <p className="text-2xl font-bold text-blue-600 mt-1">{count}件</p>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
+        {/* 施術者別集計 */}
+        <div style={S.card}>
+          <div style={S.sectionTitle}>👨‍⚕️ 施術者別集計</div>
+          <table style={S.gridTbl}>
+            <thead>
+              <tr><th style={S.th}>施術者</th><th style={S.th}>予約件数</th><th style={S.th}>割合</th></tr>
+            </thead>
+            <tbody>
+              {staffSummary.sort((a, b) => b.count - a.count).map(s => (
+                <tr key={s.staffId}>
+                  <td style={S.td}>{s.name}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 600 }}>{s.count}</td>
+                  <td style={S.td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, background: '#e2e8f0', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+                        <div style={{ background: C.primary, height: '100%', borderRadius: 4, width: totalCount > 0 ? `${s.count / totalCount * 100}%` : '0%', transition: 'width .4s' }} />
+                      </div>
+                      <span style={{ fontSize: 11.5, color: C.muted, minWidth: 36 }}>
+                        {totalCount > 0 ? Math.round(s.count / totalCount * 100) : 0}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* メニュー別集計 */}
-        {!loading && Object.keys(serviceStats).length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp size={24} /> メニュー別集計
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {Object.entries(serviceStats)
-                .sort((a, b) => b[1] - a[1])
-                .map(([service, count]) => (
-                  <div key={service} className="p-4 border border-gray-300 rounded-lg">
-                    <p className="font-semibold text-gray-900">{service}</p>
-                    <p className="text-2xl font-bold text-green-600 mt-1">{count}件</p>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
+        <div style={S.card}>
+          <div style={S.sectionTitle}>📋 コース別集計</div>
+          <table style={S.gridTbl}>
+            <thead>
+              <tr><th style={S.th}>コース</th><th style={S.th}>予約件数</th></tr>
+            </thead>
+            <tbody>
+              {menuSummary.sort((a, b) => b.count - a.count).map(m => (
+                <tr key={m.menuId}>
+                  <td style={S.td}>{m.name}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 600 }}>{m.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* 月別集計 */}
-        {!loading && Object.keys(monthStats).length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">📈 月別推移</h2>
-            <div className="space-y-2">
-              {Object.entries(monthStats)
-                .sort((a, b) => b[0].localeCompare(a[0]))
-                .map(([month, count]) => (
-                  <div key={month} className="flex items-center gap-4">
-                    <span className="font-semibold text-gray-700 w-24">{month}</span>
-                    <div className="flex-1 bg-gray-200 rounded-full h-8 flex items-center">
-                      <div
-                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-8 rounded-full flex items-center justify-end pr-2"
-                        style={{
-                          width: `${(count / Math.max(...Object.values(monthStats))) * 100}%`,
-                        }}
-                      >
-                        <span className="text-white font-bold text-sm">{count}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
+        <div style={S.card}>
+          <div style={S.sectionTitle}>📅 月別集計</div>
+          <table style={S.gridTbl}>
+            <thead>
+              <tr><th style={S.th}>年月</th><th style={S.th}>予約件数</th></tr>
+            </thead>
+            <tbody>
+              {Object.entries(monthlySummary).sort((a, b) => b[0].localeCompare(a[0])).map(([ym, count]) => (
+                <tr key={ym}>
+                  <td style={S.td}>{ym}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 600 }}>{count}</td>
+                </tr>
+              ))}
+              {Object.keys(monthlySummary).length === 0 && (
+                <tr><td colSpan={2} style={{ ...S.td, textAlign: 'center', color: C.muted }}>データがありません</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-        {/* 予約詳細表 */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-x-auto">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">
-              予約詳細 ({filteredBookings.length}件)
-            </h2>
+        {/* 予約一覧テーブル */}
+        <div style={S.card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div style={S.sectionTitle}>予約一覧（{filtered.length}件）</div>
           </div>
-
-          {filteredBookings.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              該当する予約データがありません
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gradient-to-r from-blue-50 to-blue-100 border-b-2 border-blue-300">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={S.gridTbl}>
+              <thead>
                 <tr>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-900">日時</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-900">顧客名</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-900">スタイリスト</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-900">メニュー</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-900">電話番号</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-900">ステータス</th>
+                  {['予約ID', '日時', '顧客名', '担当者', 'コース', 'ステータス'].map(h => <th key={h} style={S.th}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
-                {filteredBookings.map((booking, idx) => (
-                  <tr
-                    key={booking.bookingId}
-                    className={`border-b ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-blue-50`}
-                  >
-                    <td className="px-6 py-4 font-semibold text-gray-900">
-                      {booking.dateTime}
-                    </td>
-                    <td className="px-6 py-4 text-gray-700">{booking.customerName}</td>
-                    <td className="px-6 py-4 text-gray-700">{booking.staff}</td>
-                    <td className="px-6 py-4 text-gray-700">{booking.service}</td>
-                    <td className="px-6 py-4 text-gray-700">{booking.customerPhone}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
-                        booking.status === 'confirmed' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {booking.status === 'confirmed' ? '確定' : 'キャンセル'}
-                      </span>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={6} style={{ ...S.td, textAlign: 'center', color: C.muted }}>データがありません</td></tr>
+                ) : filtered.slice(0, 100).map(b => (
+                  <tr key={b.bookingId} style={{ background: b.status === 'キャンセル' ? '#fef2f2' : undefined }}>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 11 }}>{b.bookingId}</td>
+                    <td style={S.td}>{b.datetime}</td>
+                    <td style={S.td}>{b.userName}</td>
+                    <td style={S.td}>{b.staffId}</td>
+                    <td style={S.td}>{b.menuId}</td>
+                    <td style={S.td}>
+                      <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: b.status === '確定' ? '#d1fae5' : '#e2e8f0', color: b.status === '確定' ? '#065f46' : '#475569' }}>{b.status}</span>
                     </td>
                   </tr>
                 ))}
+                {filtered.length > 100 && (
+                  <tr><td colSpan={6} style={{ ...S.td, textAlign: 'center', color: C.muted }}>100件以上は表示を省略しています。CSVエクスポートで全件取得できます。</td></tr>
+                )}
               </tbody>
             </table>
-          )}
+          </div>
         </div>
       </div>
     </div>
