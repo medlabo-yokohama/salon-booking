@@ -7,7 +7,7 @@ import ReactDOM from 'react-dom/client';
 import AdminDashboard from './admin_dashboard_with_notifications';
 import BookingCalendar from './booking_calendar_ui_with_notifications';
 import HistoryDashboard from './history_dashboard';
-import LineLiffBooking from './line_liff_booking_v3';
+import LineLiffBooking from './line_liff_booking';
 
 /**
  * URLパラメータを解析して表示する画面を決定する
