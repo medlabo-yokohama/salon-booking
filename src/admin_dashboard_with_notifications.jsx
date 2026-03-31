@@ -1,222 +1,182 @@
 // ============================================================
 // admin_dashboard_with_notifications.jsx
-// 管理者ダッシュボード（予約管理・施術者・店舗・メニュー等）
+// 管理者ダッシュボード 完全修正版
 // ============================================================
 import React, { useState, useEffect, useCallback } from 'react';
 
-// ============================================================
-// 定数・設定
-// ============================================================
 const GAS_URL = import.meta.env.VITE_GAS_URL || '';
 
-// サイドナビメニュー定義
 const NAV_ITEMS = [
-  { key: 'booking',   label: '予約管理画面' },
-  { key: 'staff',     label: '施術者管理画面' },
-  { key: 'store',     label: '店舗管理画面' },
-  { key: 'menu',      label: 'メニュー管理画面' },
-  { key: 'message',   label: 'メッセージ管理画面' },
-  { key: 'users',     label: '利用者管理画面' },
-  { key: 'inquiry',   label: '問い合わせ' },
+  { key: 'booking', label: '予約管理画面' },
+  { key: 'staff',   label: '施術者管理画面' },
+  { key: 'store',   label: '店舗管理画面' },
+  { key: 'menu',    label: 'メニュー管理画面' },
+  { key: 'message', label: 'メッセージ管理画面' },
+  { key: 'users',   label: '利用者管理画面' },
+  { key: 'inquiry', label: '問い合わせ' },
 ];
 
 // ============================================================
-// APIクライアント
+// API
 // ============================================================
-
-/**
- * GASバックエンドにGETリクエストを送る
- */
 async function apiGet(params) {
   const url = new URL(GAS_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString());
   return res.json();
 }
-
-/**
- * GASバックエンドにPOSTリクエストを送る
- */
 async function apiPost(body) {
-  const res = await fetch(GAS_URL, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) });
   return res.json();
 }
 
 // ============================================================
-// スタイル定数（UIイメージv3に準拠）
+// ユーティリティ
 // ============================================================
-const COLORS = {
-  primary: '#1a4f8a',
-  primaryLight: '#2563b0',
-  primaryPale: '#dbeafe',
-  accent: '#0ea5e9',
-  danger: '#dc2626',
-  warning: '#f59e0b',
-  success: '#059669',
-  bg: '#f0f4f8',
-  surface: '#ffffff',
-  border: '#cbd5e1',
-  text: '#1e293b',
-  textMuted: '#64748b',
+
+/** 日時を「YYYY-MM-DD HH:mm」形式に正規化する */
+function fmtDatetime(raw) {
+  if (!raw) return '—';
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(raw))) return String(raw).substring(0, 16);
+  // "2026-03-09 9:30" → "2026-03-09 09:30"
+  const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})\s+(\d):(\d{2})/);
+  if (m) return `${m[1]} 0${m[2]}:${m[3]}`;
+  const d = new Date(raw);
+  if (!isNaN(d)) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  return String(raw);
+}
+
+/** 登録日をYYYY-MM-DD形式に変換する */
+function fmtDate(raw) {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (!isNaN(d)) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  }
+  return String(raw).split('T')[0];
+}
+
+/** 電話番号の先頭0を保証する */
+function fmtPhone(raw) {
+  if (!raw) return '—';
+  const s = String(raw);
+  // 数値として解釈され先頭0が消えた場合に補完
+  if (/^[1-9]\d{9}$/.test(s)) return '0' + s;
+  return s;
+}
+
+// ============================================================
+// スタイル
+// ============================================================
+const C = {
+  primary: '#1a4f8a', primaryPale: '#dbeafe', accent: '#0ea5e9',
+  danger: '#dc2626', warning: '#f59e0b', success: '#059669',
+  bg: '#f0f4f8', surface: '#fff', border: '#cbd5e1',
+  text: '#1e293b', muted: '#64748b',
 };
 
-const styles = {
-  app: { fontFamily: "'Noto Sans JP', sans-serif", background: COLORS.bg, minHeight: '100vh', fontSize: 13 },
-  // --- ログイン画面 ---
-  loginWrap: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'linear-gradient(135deg, #1a4f8a 0%, #0ea5e9 100%)' },
-  loginCard: { background: '#fff', borderRadius: 12, padding: '40px 48px', boxShadow: '0 20px 60px rgba(0,0,0,.2)', minWidth: 360 },
-  loginTitle: { fontSize: 20, color: COLORS.primary, fontWeight: 700, marginBottom: 24, textAlign: 'center' },
-  loginField: { marginBottom: 14 },
-  loginLabel: { display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: COLORS.textMuted },
-  loginInput: { width: '100%', border: `1.5px solid ${COLORS.border}`, borderRadius: 6, padding: '9px 12px', fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box' },
-  // --- レイアウト ---
+const S = {
+  app: { fontFamily: "'Noto Sans JP', sans-serif", background: C.bg, minHeight: '100vh', fontSize: 13 },
   layout: { display: 'flex', minHeight: '100vh' },
-  sidenav: { width: 184, background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`, flexShrink: 0, display: 'flex', flexDirection: 'column', padding: '16px 0', position: 'sticky', top: 0, height: '100vh' },
-  navLink: (active) => ({ display: 'block', padding: '9px 18px', color: active ? '#fff' : COLORS.text, background: active ? COLORS.primary : 'transparent', textDecoration: 'none', fontSize: 12.5, cursor: 'pointer', transition: 'background .15s', fontWeight: active ? 700 : 400 }),
-  navLogout: { display: 'block', padding: '9px 18px', color: COLORS.danger, marginTop: 'auto', cursor: 'pointer', fontSize: 12.5 },
-  main: { flex: 1, padding: '20px 24px', overflowX: 'auto', background: COLORS.bg },
+  sidenav: { width: 184, background: C.surface, borderRight: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', flexDirection: 'column', padding: '16px 0', position: 'sticky', top: 0, height: '100vh' },
+  navLink: (active) => ({ display: 'block', padding: '9px 18px', color: active ? '#fff' : C.text, background: active ? C.primary : 'transparent', textDecoration: 'none', fontSize: 12.5, cursor: 'pointer', fontWeight: active ? 700 : 400 }),
+  navLogout: { display: 'block', padding: '9px 18px', color: C.danger, marginTop: 'auto', cursor: 'pointer', fontSize: 12.5 },
+  main: { flex: 1, padding: '20px 24px', overflowX: 'auto' },
   pageHeader: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 },
-  pageTitle: { fontSize: 16, fontWeight: 700, color: COLORS.primary },
-  // --- リフレッシュバー ---
-  refreshBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, fontSize: 11.5, marginBottom: 12 },
-  // --- ボタン ---
-  btn: (variant) => {
-    const base = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 16px', border: 'none', borderRadius: 6, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, cursor: 'pointer' };
-    const variants = {
-      primary: { background: COLORS.primary, color: '#fff' },
-      accent:  { background: COLORS.accent, color: '#fff' },
-      success: { background: COLORS.success, color: '#fff' },
-      outline: { background: '#fff', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}` },
-      danger:  { background: COLORS.danger, color: '#fff' },
-      gray:    { background: '#e2e8f0', color: COLORS.text },
-    };
-    return { ...base, ...(variants[variant] || variants.primary) };
+  pageTitle: { fontSize: 16, fontWeight: 700, color: C.primary },
+  refreshBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: C.surface, borderBottom: `1px solid ${C.border}`, fontSize: 11.5, marginBottom: 12 },
+  // ログイン
+  loginWrap: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'linear-gradient(135deg,#1a4f8a,#0ea5e9)' },
+  loginCard: { background: '#fff', borderRadius: 12, padding: '40px 48px', boxShadow: '0 20px 60px rgba(0,0,0,.2)', minWidth: 360 },
+  loginInput: { width: '100%', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '9px 12px', fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box', marginBottom: 12 },
+  // ボタン
+  btn: (v) => {
+    const vs = { primary: { background: C.primary, color: '#fff' }, danger: { background: C.danger, color: '#fff' }, success: { background: C.success, color: '#fff' }, accent: { background: C.accent, color: '#fff' }, gray: { background: '#e2e8f0', color: C.text }, outline: { background: '#fff', color: C.primary, border: `1.5px solid ${C.primary}` } };
+    return { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 16px', border: 'none', borderRadius: 6, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', ...(vs[v] || vs.primary) };
   },
   btnRow: { display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' },
-  // --- テーブル ---
-  gridTbl: { width: '100%', borderCollapse: 'collapse', background: COLORS.surface, boxShadow: '0 2px 8px rgba(0,0,0,.10)', borderRadius: 6, overflow: 'hidden' },
-  gridTh: { background: COLORS.primary, color: '#fff', padding: '8px 12px', fontSize: 12.5, fontWeight: 500, textAlign: 'center', border: `1px solid ${COLORS.border}` },
-  gridTd: { border: `1px solid ${COLORS.border}`, padding: '8px 12px', fontSize: 12.5 },
-  formTbl: { width: '100%', borderCollapse: 'collapse', background: COLORS.surface, borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.10)' },
-  formTh: { background: '#f1f5f9', fontWeight: 600, width: 180, color: COLORS.text, border: `1px solid ${COLORS.border}`, padding: '9px 12px', fontSize: 12.5, textAlign: 'left' },
-  formTd: { color: COLORS.textMuted, border: `1px solid ${COLORS.border}`, padding: '9px 12px', fontSize: 12.5 },
-  formInput: { width: '100%', border: `1.5px solid ${COLORS.border}`, borderRadius: 4, padding: '5px 8px', fontFamily: 'inherit', fontSize: 12.5, color: COLORS.text, background: '#f8fafc', boxSizing: 'border-box' },
-  // --- カレンダー ---
-  calTable: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' },
-  calTh: (type) => ({ background: type === 'sun' ? '#b91c1c' : type === 'sat' ? '#1d4ed8' : COLORS.primary, color: '#fff', padding: '6px 4px', textAlign: 'center', fontSize: 12, fontWeight: 500 }),
-  calTd: (type) => ({ border: `1px solid ${COLORS.border}`, verticalAlign: 'top', height: 80, padding: 4, background: type === 'holiday' ? '#fef2f2' : type === 'sat' ? '#eff6ff' : COLORS.surface, cursor: 'pointer' }),
-  calEvent: { fontSize: 10.5, background: COLORS.primaryPale, color: COLORS.primary, borderRadius: 3, padding: '1px 4px', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  // --- 日ビュー ---
-  dayTh: (isTime) => ({ background: isTime ? '#374151' : COLORS.primary, color: '#fff', padding: '7px 10px', textAlign: 'center', fontSize: 12.5, fontWeight: 500, border: `1px solid ${COLORS.border}`, width: isTime ? 72 : 'auto' }),
-  dayTd: (type) => {
-    const base = { border: `1px solid ${COLORS.border}`, padding: '4px 6px', height: 38, verticalAlign: 'top' };
-    const types = {
-      time:   { ...base, background: '#f8fafc', fontSize: 11.5, color: COLORS.textMuted, textAlign: 'center', fontFamily: 'monospace' },
-      break:  { ...base, background: '#fef3c7' },
-      off:    { ...base, background: '#f1f5f9' },
-      booked: { ...base, background: COLORS.primaryPale, cursor: 'pointer' },
-      empty:  { ...base, cursor: 'pointer' },
-    };
-    return types[type] || base;
+  // テーブル
+  gridTbl: { width: '100%', borderCollapse: 'collapse', background: C.surface, boxShadow: '0 2px 8px rgba(0,0,0,.10)', borderRadius: 6, overflow: 'hidden' },
+  th: { background: C.primary, color: '#fff', padding: '8px 12px', fontSize: 12.5, fontWeight: 500, textAlign: 'center', border: `1px solid ${C.border}` },
+  td: { border: `1px solid ${C.border}`, padding: '8px 12px', fontSize: 12.5 },
+  formTbl: { width: '100%', borderCollapse: 'collapse', background: C.surface, borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.10)' },
+  formTh: { background: '#f1f5f9', fontWeight: 600, width: 180, color: C.text, border: `1px solid ${C.border}`, padding: '9px 12px', fontSize: 12.5, textAlign: 'left' },
+  formTd: { color: C.muted, border: `1px solid ${C.border}`, padding: '9px 12px', fontSize: 12.5 },
+  input: { width: '100%', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', fontFamily: 'inherit', fontSize: 12.5, color: C.text, background: '#f8fafc', boxSizing: 'border-box' },
+  // カレンダー
+  calTh: (t) => ({ background: t === 'sun' ? '#b91c1c' : t === 'sat' ? '#1d4ed8' : C.primary, color: '#fff', padding: '6px 4px', textAlign: 'center', fontSize: 12, fontWeight: 500 }),
+  calTd: (t) => ({ border: `1px solid ${C.border}`, verticalAlign: 'top', height: 80, padding: 4, background: t === 'holiday' ? '#fef2f2' : t === 'sat' ? '#eff6ff' : C.surface, cursor: 'pointer' }),
+  calEvent: { fontSize: 10.5, background: C.primaryPale, color: C.primary, borderRadius: 3, padding: '1px 4px', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  dayTd: (t) => {
+    const base = { border: `1px solid ${C.border}`, padding: '4px 6px', height: 38, verticalAlign: 'top' };
+    return { ...base, ...({ time: { background: '#f8fafc', fontSize: 11.5, color: C.muted, textAlign: 'center', fontFamily: 'monospace' }, break: { background: '#fef3c7' }, off: { background: '#f1f5f9' }, booked: { background: C.primaryPale, cursor: 'pointer' }, empty: { cursor: 'pointer' } }[t] || {}) };
   },
-  // --- カード ---
-  card: { background: COLORS.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '16px 20px', marginBottom: 16 },
-  sectionTitle: { fontSize: 14, fontWeight: 700, color: COLORS.primary, marginBottom: 12, paddingBottom: 6, borderBottom: `2px solid ${COLORS.primaryPale}` },
-  // --- バッジ ---
-  badge: (color) => {
-    const badges = {
-      blue:   { background: COLORS.primaryPale, color: COLORS.primary },
-      green:  { background: '#d1fae5', color: '#065f46' },
-      orange: { background: '#fef3c7', color: '#92400e' },
-      gray:   { background: '#e2e8f0', color: '#475569' },
-    };
-    return { display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...(badges[color] || badges.gray) };
-  },
-  // --- モーダル ---
-  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-  modalCard: { background: '#fff', borderRadius: 8, padding: 24, minWidth: 400, maxWidth: 560, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.3)' },
-  modalTitle: { fontSize: 15, fontWeight: 700, color: COLORS.primary, marginBottom: 16 },
-  // --- ノート ---
-  note: (type) => {
-    const notes = {
-      warn:    { background: '#fef9c3', borderLeft: `4px solid ${COLORS.warning}`, color: '#78350f' },
-      info:    { background: '#eff6ff', borderLeft: `4px solid ${COLORS.primary}`, color: COLORS.primary },
-      success: { background: '#f0fdf4', borderLeft: `4px solid ${COLORS.success}`, color: '#065f46' },
-    };
-    return { padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, ...(notes[type] || notes.info) };
-  },
-  // --- ダッシュカード ---
-  dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 },
-  dashCard: (color) => ({ background: COLORS.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '14px 16px', borderTop: `3px solid ${color || COLORS.primary}` }),
+  // カード・バッジ・ノート
+  card: { background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '16px 20px', marginBottom: 16 },
+  dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 20 },
+  dashCard: (color) => ({ background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.08)', padding: '14px 16px', borderTop: `3px solid ${color}` }),
+  badge: (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...({ blue: { background: C.primaryPale, color: C.primary }, green: { background: '#d1fae5', color: '#065f46' }, gray: { background: '#e2e8f0', color: '#475569' } }[c] || {}) }),
+  note: (t) => ({ padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, ...({ warn: { background: '#fef9c3', borderLeft: `4px solid ${C.warning}`, color: '#78350f' }, info: { background: '#eff6ff', borderLeft: `4px solid ${C.primary}`, color: C.primary }, success: { background: '#f0fdf4', borderLeft: `4px solid ${C.success}`, color: '#065f46' } }[t] || {}) }),
+  sectionTitle: { fontSize: 14, fontWeight: 700, color: C.primary, marginBottom: 12, paddingBottom: 6, borderBottom: `2px solid ${C.primaryPale}` },
+  // モーダル
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modalCard: { background: '#fff', borderRadius: 8, padding: 24, minWidth: 400, maxWidth: 560, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', maxHeight: '90vh', overflowY: 'auto' },
 };
 
 // ============================================================
 // 共通コンポーネント
 // ============================================================
-
-/** サイドナビゲーション */
-function SideNav({ current, onChange, onLogout }) {
+function Modal({ title, onClose, children }) {
   return (
-    <nav style={styles.sidenav}>
-      {NAV_ITEMS.map(item => (
-        <a key={item.key} style={styles.navLink(current === item.key)} onClick={() => onChange(item.key)}>
-          {item.label}
-        </a>
-      ))}
-      <a style={styles.navLogout} onClick={onLogout}>ログアウト</a>
-    </nav>
-  );
-}
-
-/** 自動更新バー */
-function RefreshBar({ countdown, interval, onManualRefresh }) {
-  return (
-    <div style={styles.refreshBar}>
-      <span style={{ background: '#d1fae5', color: '#065f46', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
-        ● 自動更新中
-      </span>
-      <span style={{ color: COLORS.textMuted, fontSize: 11 }}>
-        次の更新まで <b>{countdown}</b>秒
-      </span>
-      <button style={styles.btn('gray')} onClick={onManualRefresh}>⟳ 手動更新</button>
-    </div>
-  );
-}
-
-/** 汎用ボタン */
-function Btn({ variant = 'primary', onClick, children, style }) {
-  return <button style={{ ...styles.btn(variant), ...style }} onClick={onClick}>{children}</button>;
-}
-
-/** モーダル */
-function Modal({ title, children, onClose }) {
-  return (
-    <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modalCard} onClick={e => e.stopPropagation()}>
-        <div style={styles.modalTitle}>{title}</div>
+    <div style={S.overlay} onClick={onClose}>
+      <div style={S.modalCard} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.primary, marginBottom: 16 }}>{title}</div>
         {children}
       </div>
     </div>
   );
 }
 
-/** フォーム入力行 */
 function FormRow({ label, required, children }) {
   return (
     <tr>
-      <th style={styles.formTh}>
-        {label}{required && <span style={{ color: COLORS.danger, fontSize: 11, marginLeft: 4 }}>*</span>}
-      </th>
-      <td style={styles.formTd}>{children}</td>
+      <th style={S.formTh}>{label}{required && <span style={{ color: C.danger, fontSize: 11, marginLeft: 4 }}>*</span>}</th>
+      <td style={S.formTd}>{children}</td>
     </tr>
   );
 }
 
+function Btn({ v = 'primary', onClick, children, style }) {
+  return <button style={{ ...S.btn(v), ...style }} onClick={onClick}>{children}</button>;
+}
+
+function SideNav({ current, onChange, onLogout }) {
+  return (
+    <nav style={S.sidenav}>
+      {NAV_ITEMS.map(item => (
+        <a key={item.key} style={S.navLink(current === item.key)} onClick={() => onChange(item.key)}>{item.label}</a>
+      ))}
+      <a style={S.navLogout} onClick={onLogout}>ログアウト</a>
+    </nav>
+  );
+}
+
+function RefreshBar({ countdown, onManualRefresh }) {
+  return (
+    <div style={S.refreshBar}>
+      <span style={{ background: '#d1fae5', color: '#065f46', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>● 自動更新中</span>
+      <span style={{ color: C.muted, fontSize: 11 }}>次の更新まで <b>{countdown}</b>秒</span>
+      <button style={S.btn('gray')} onClick={onManualRefresh}>⟳ 手動更新</button>
+    </div>
+  );
+}
+
 // ============================================================
-// 管理者ログイン画面
+// ログイン画面
 // ============================================================
 function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('');
@@ -228,35 +188,26 @@ function LoginScreen({ onLogin }) {
     setLoading(true);
     try {
       const res = await apiPost({ action: 'adminLogin', password });
-      if (res.success) {
-        onLogin();
-      } else {
-        setError(res.error?.message || 'ログインに失敗しました');
-      }
-    } catch {
-      setError('通信エラーが発生しました');
-    }
+      if (res.success) { onLogin(); }
+      else { setError(res.error?.message || 'パスワードが違います'); }
+    } catch { setError('通信エラーが発生しました'); }
     setLoading(false);
   };
 
   return (
-    <div style={styles.loginWrap}>
-      <div style={styles.loginCard}>
-        <h2 style={styles.loginTitle}>🏥 予約システム</h2>
-        <div style={styles.loginField}>
-          <label style={styles.loginLabel}>ログインID（E-Mail）</label>
-          <input style={styles.loginInput} type="email" placeholder="〇〇〇@yokohama-isen.ac.jp" />
-        </div>
-        <div style={styles.loginField}>
-          <label style={styles.loginLabel}>パスワード</label>
-          <input style={styles.loginInput} type="password" placeholder="パスワードを入力"
-            value={password} onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-        </div>
-        {error && <p style={{ color: COLORS.danger, fontSize: 12, marginTop: 8 }}>{error}</p>}
-        <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
-          <Btn variant="gray" style={{ flex: 1 }} onClick={() => setPassword('')}>キャンセル</Btn>
-          <Btn variant="primary" style={{ flex: 1 }} onClick={handleLogin}>{loading ? '確認中...' : 'ログイン'}</Btn>
+    <div style={S.loginWrap}>
+      <div style={S.loginCard}>
+        <h2 style={{ fontSize: 20, color: C.primary, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>🏥 予約システム</h2>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.muted }}>ログインID（E-Mail）</label>
+        <input style={S.loginInput} type="email" placeholder="〇〇〇@yokohama-isen.ac.jp" />
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.muted }}>パスワード</label>
+        <input style={S.loginInput} type="password" placeholder="パスワードを入力"
+          value={password} onChange={e => setPassword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <Btn v="gray" style={{ flex: 1 }} onClick={() => setPassword('')}>キャンセル</Btn>
+          <Btn v="primary" style={{ flex: 1 }} onClick={handleLogin}>{loading ? '確認中...' : 'ログイン'}</Btn>
         </div>
       </div>
     </div>
@@ -264,17 +215,16 @@ function LoginScreen({ onLogin }) {
 }
 
 // ============================================================
-// 予約管理：月カレンダー
+// 月カレンダー
 // ============================================================
-function BookingCalendarMonth({ bookings, menuList, currentDate, onChangeDate, onSelectDay }) {
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
+function CalMonth({ bookings, menuList, currentDate, onChangeDate, onSelectDay }) {
+  const year = currentDate.getFullYear(), month = currentDate.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const today = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const DAY = ['日','月','火','水','木','金','土'];
 
-  // 日付ごとに予約をグループ化
   const bookingMap = {};
   bookings.forEach(b => {
     const d = b.datetime?.split(' ')[0];
@@ -286,67 +236,44 @@ function BookingCalendarMonth({ bookings, menuList, currentDate, onChangeDate, o
   let day = 1 - firstDay;
   while (day <= daysInMonth) {
     const week = [];
-    for (let i = 0; i < 7; i++, day++) {
-      week.push(day > 0 && day <= daysInMonth ? day : null);
-    }
+    for (let i = 0; i < 7; i++, day++) week.push(day > 0 && day <= daysInMonth ? day : null);
     weeks.push(week);
   }
 
-  const pad = n => String(n).padStart(2, '0');
   const isToday = d => d && year === today.getFullYear() && month === today.getMonth() && d === today.getDate();
 
   return (
     <div>
-      {/* カレンダーナビ */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <button style={styles.btn('primary')} onClick={() => onChangeDate(new Date())}>今月</button>
-        <button style={{ background: 'none', border: `1.5px solid ${COLORS.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
-          onClick={() => onChangeDate(new Date(year, month - 1, 1))}>≪</button>
-        <span style={{ fontSize: 15, fontWeight: 700, minWidth: 110, textAlign: 'center' }}>
-          {year}年{month + 1}月
-        </span>
-        <button style={{ background: 'none', border: `1.5px solid ${COLORS.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
-          onClick={() => onChangeDate(new Date(year, month + 1, 1))}>≫</button>
+        <Btn v="primary" onClick={() => onChangeDate(new Date())}>今月</Btn>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }} onClick={() => onChangeDate(new Date(year, month - 1, 1))}>≪</button>
+        <span style={{ fontSize: 15, fontWeight: 700, minWidth: 110, textAlign: 'center' }}>{year}年{month + 1}月</span>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }} onClick={() => onChangeDate(new Date(year, month + 1, 1))}>≫</button>
       </div>
-
-      {/* カレンダー本体 */}
-      <table style={styles.calTable}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
-          <tr>
-            {DAY_NAMES.map((d, i) => (
-              <th key={d} style={styles.calTh(i === 0 ? 'sun' : i === 6 ? 'sat' : 'weekday')}>{d}</th>
-            ))}
-          </tr>
+          <tr>{DAY.map((d, i) => <th key={d} style={S.calTh(i === 0 ? 'sun' : i === 6 ? 'sat' : 'weekday')}>{d}</th>)}</tr>
         </thead>
         <tbody>
           {weeks.map((week, wi) => (
             <tr key={wi}>
               {week.map((d, di) => {
-                const dateStr = d ? `${year}-${pad(month + 1)}-${pad(d)}` : null;
+                const dateStr = d ? `${year}-${p(month + 1)}-${p(d)}` : null;
                 const dayBookings = dateStr ? (bookingMap[dateStr] || []) : [];
-                const isHoliday = di === 0;
-                const isSat = di === 6;
                 return (
-                  <td key={di}
-                    style={{ ...styles.calTd(isHoliday ? 'holiday' : isSat ? 'sat' : 'normal'), outline: isToday(d) ? `2px solid ${COLORS.primary}` : 'none' }}
+                  <td key={di} style={{ ...S.calTd(di === 0 ? 'holiday' : di === 6 ? 'sat' : 'normal'), outline: isToday(d) ? `2px solid ${C.primary}` : 'none' }}
                     onClick={() => d && onSelectDay(new Date(year, month, d))}>
                     {d && (
                       <>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: isHoliday ? '#b91c1c' : isSat ? '#1d4ed8' : COLORS.textMuted }}>
-                          {d}
-                          {isToday(d) && <span style={{ marginLeft: 4, fontSize: 9, background: COLORS.primary, color: '#fff', borderRadius: 3, padding: '0 3px' }}>今日</span>}
+                        <div style={{ fontSize: 12, fontWeight: 700, color: di === 0 ? '#b91c1c' : di === 6 ? '#1d4ed8' : C.muted }}>
+                          {d}{isToday(d) && <span style={{ marginLeft: 4, fontSize: 9, background: C.primary, color: '#fff', borderRadius: 3, padding: '0 3px' }}>今日</span>}
                         </div>
                         {dayBookings.slice(0, 3).map((b, bi) => {
                           const mName = menuList.find(m => m.menuId === b.menuId)?.name || b.menuId;
-                          return (
-                            <div key={bi} style={styles.calEvent}>
-                              {b.datetime?.split(' ')[1]?.substring(0, 5)} {b.userName}（{mName}）
-                            </div>
-                          );
+                          const time = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
+                          return <div key={bi} style={S.calEvent}>{time} {b.userName}（{mName}）</div>;
                         })}
-                        {dayBookings.length > 3 && (
-                          <div style={{ fontSize: 10, color: COLORS.textMuted }}>+{dayBookings.length - 3}件</div>
-                        )}
+                        {dayBookings.length > 3 && <div style={{ fontSize: 10, color: C.muted }}>+{dayBookings.length - 3}件</div>}
                       </>
                     )}
                   </td>
@@ -356,95 +283,67 @@ function BookingCalendarMonth({ bookings, menuList, currentDate, onChangeDate, o
           ))}
         </tbody>
       </table>
-      <div style={styles.note('info')}>💡 日毎のサマリーを表示。セルをクリックすると日単位ビューに移動。</div>
+      <div style={S.note('info')}>💡 日毎のサマリーを表示。セルをクリックすると日単位ビューに移動。</div>
     </div>
   );
 }
 
 // ============================================================
-// 予約管理：日ビュー
+// 日ビュー
 // ============================================================
-function BookingCalendarDay({ bookings, staffList, menuList, currentDate, onChangeDate, onSelectBooking, onSelectEmpty }) {
-  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
-  const dayName = DAY_NAMES[currentDate.getDay()];
-  const pad = n => String(n).padStart(2, '0');
-  const dateStr = `${currentDate.getFullYear()}-${pad(currentDate.getMonth() + 1)}-${pad(currentDate.getDate())}`;
-
-  // 時間スロット生成（9:00〜18:00、30分単位）
+function CalDay({ bookings, staffList, menuList, currentDate, onChangeDate, onSelectBooking, onSelectEmpty }) {
+  const DAY = ['日','月','火','水','木','金','土'];
+  const p = n => String(n).padStart(2, '0');
+  const dateStr = `${currentDate.getFullYear()}-${p(currentDate.getMonth()+1)}-${p(currentDate.getDate())}`;
   const slots = [];
-  for (let h = 9; h < 18; h++) {
-    slots.push(`${pad(h)}:00`);
-    slots.push(`${pad(h)}:30`);
-  }
+  for (let h = 9; h < 18; h++) { slots.push(`${p(h)}:00`); slots.push(`${p(h)}:30`); }
 
-  // 予約データを日時・施術者でマッピング（時刻を必ず HH:mm 形式に正規化）
+  // 時刻を正規化してマッピング
   const bookingMap = {};
   bookings.forEach(b => {
     const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
-    // "9:30" → "09:30" に正規化
-    const time = rawTime.includes(':') && rawTime.indexOf(':') < 2
-      ? rawTime.padStart(5, '0')
-      : rawTime;
-    const key = `${time}__${b.staffId}`;
-    bookingMap[key] = b;
+    const time = rawTime.includes(':') && rawTime.indexOf(':') < 2 ? rawTime.padStart(5, '0') : rawTime;
+    bookingMap[`${time}__${b.staffId}`] = b;
   });
-
-  const isBreak = (slot) => slot >= '12:00' && slot < '13:00';
 
   return (
     <div>
-      {/* 日ビューナビ */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <button style={styles.btn('primary')} onClick={() => onChangeDate(new Date())}>今日</button>
-        <button style={{ background: 'none', border: `1.5px solid ${COLORS.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
-          onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 1); onChangeDate(d); }}>≪</button>
+        <Btn v="primary" onClick={() => onChangeDate(new Date())}>今日</Btn>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
+          onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate()-1); onChangeDate(d); }}>≪</button>
         <span style={{ fontSize: 15, fontWeight: 700, minWidth: 150, textAlign: 'center' }}>
-          {currentDate.getMonth() + 1}月{currentDate.getDate()}日（{dayName}）
+          {currentDate.getMonth()+1}月{currentDate.getDate()}日（{DAY[currentDate.getDay()]}）
         </span>
-        <button style={{ background: 'none', border: `1.5px solid ${COLORS.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
-          onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 1); onChangeDate(d); }}>≫</button>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
+          onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate()+1); onChangeDate(d); }}>≫</button>
       </div>
-
-      <div style={styles.note('info')}>💡 利用者名クリック→予約詳細。空欄クリック→新規予約。橙＝昼休憩。</div>
-
-      <table style={{ ...styles.calTable, marginTop: 10 }}>
+      <div style={S.note('info')}>💡 利用者名クリック→予約詳細。空欄クリック→新規予約。橙＝昼休憩。</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
         <thead>
           <tr>
-            <th style={styles.dayTh(true)}>時間</th>
-            {staffList.map(s => (
-              <th key={s.staffId} style={styles.dayTh(false)}>{s.name}</th>
-            ))}
+            <th style={{ ...S.dayTd('time'), background: '#374151', color: '#fff', width: 72 }}>時間</th>
+            {staffList.map(s => <th key={s.staffId} style={{ background: C.primary, color: '#fff', padding: '7px 10px', textAlign: 'center', fontSize: 12.5, border: `1px solid ${C.border}` }}>{s.name}</th>)}
           </tr>
         </thead>
         <tbody>
           {slots.map(slot => {
-            const inBreak = isBreak(slot);
+            const inBreak = slot >= '12:00' && slot < '13:00';
             return (
               <tr key={slot}>
-                <td style={styles.dayTd('time')}>{slot}</td>
+                <td style={S.dayTd('time')}>{slot}</td>
                 {staffList.map(s => {
-                  const key = `${slot}__${s.staffId}`;
-                  const booking = bookingMap[key];
-                  if (inBreak) {
-                    return <td key={s.staffId} style={styles.dayTd('break')}>
-                      {slot === '12:00' && <span style={{ fontSize: 11, color: '#92400e' }}>🌙 昼休憩</span>}
-                    </td>;
-                  }
+                  const booking = bookingMap[`${slot}__${s.staffId}`];
+                  if (inBreak) return <td key={s.staffId} style={S.dayTd('break')}>{slot === '12:00' && <span style={{ fontSize: 11, color: '#92400e' }}>🌙 昼休憩</span>}</td>;
                   if (booking) {
-                    // menuIdからメニュー名、staffIdから施術者名を取得して表示
-                    const menuName  = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
+                    const mName = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
                     return (
-                      <td key={s.staffId} style={styles.dayTd('booked')} onClick={() => onSelectBooking(booking)}>
-                        <div style={{ fontSize: 10.5, color: COLORS.primary, fontWeight: 500, lineHeight: 1.4 }}>
-                          {menuName} / {booking.userName}
-                        </div>
+                      <td key={s.staffId} style={S.dayTd('booked')} onClick={() => onSelectBooking(booking)}>
+                        <div style={{ fontSize: 10.5, color: C.primary, fontWeight: 500, lineHeight: 1.4 }}>{mName} / {booking.userName}</div>
                       </td>
                     );
                   }
-                  return (
-                    <td key={s.staffId} style={styles.dayTd('empty')}
-                      onClick={() => onSelectEmpty(dateStr, slot, s.staffId)} />
-                  );
+                  return <td key={s.staffId} style={S.dayTd('empty')} onClick={() => onSelectEmpty(dateStr, slot, s.staffId)} />;
                 })}
               </tr>
             );
@@ -458,51 +357,44 @@ function BookingCalendarDay({ bookings, staffList, menuList, currentDate, onChan
 // ============================================================
 // 予約詳細モーダル
 // ============================================================
-function BookingDetailModal({ booking, menuList, staffList, onClose, onCancel, onUpdate }) {
+function BookingDetailModal({ booking, staffList, menuList, onClose, onCancel, onUpdate }) {
   const [note, setNote] = useState(booking.note || '');
   const [loading, setLoading] = useState(false);
-
   const staffName = staffList.find(s => s.staffId === booking.staffId)?.name || booking.staffId;
   const menuName  = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
 
-  const handleCancel = async () => {
-    if (!window.confirm('この予約をキャンセルしますか？')) return;
-    setLoading(true);
-    await onCancel(booking.bookingId);
-    setLoading(false);
-    onClose();
-  };
-
-  const handleUpdate = async () => {
-    setLoading(true);
-    await onUpdate(booking.bookingId, { note });
-    setLoading(false);
-    onClose();
-  };
-
   return (
     <Modal title="📋 予約詳細" onClose={onClose}>
-      <table style={styles.formTbl}>
+      <table style={S.formTbl}>
         <tbody>
           <FormRow label="予約ID">{booking.bookingId}</FormRow>
-          <FormRow label="日時">{booking.datetime}</FormRow>
+          <FormRow label="日時">{fmtDatetime(booking.datetime)}</FormRow>
           <FormRow label="顧客名">{booking.userName}</FormRow>
           <FormRow label="担当施術者">{staffName}</FormRow>
           <FormRow label="コース">{menuName}</FormRow>
-          <FormRow label="電話番号">{booking.userPhone || '—'}</FormRow>
+          <FormRow label="電話番号">{fmtPhone(booking.userPhone)}</FormRow>
           <FormRow label="E-Mail">{booking.userEmail || '—'}</FormRow>
-          <FormRow label="ステータス">
-            <span style={styles.badge(booking.status === '確定' ? 'green' : 'gray')}>{booking.status}</span>
-          </FormRow>
+          <FormRow label="ステータス"><span style={S.badge(booking.status === '確定' ? 'green' : 'gray')}>{booking.status}</span></FormRow>
           <FormRow label="要望・備考">
-            <textarea style={{ ...styles.formInput, height: 60 }} value={note} onChange={e => setNote(e.target.value)} />
+            <textarea style={{ ...S.input, height: 60 }} value={note} onChange={e => setNote(e.target.value)} />
           </FormRow>
         </tbody>
       </table>
-      <div style={styles.btnRow}>
-        <Btn variant="danger" onClick={handleCancel}>{loading ? '処理中...' : '予約取り消し'}</Btn>
-        <Btn variant="gray" onClick={onClose}>閉じる</Btn>
-        <Btn variant="primary" style={{ marginLeft: 'auto' }} onClick={handleUpdate}>保存</Btn>
+      <div style={S.btnRow}>
+        <Btn v="danger" onClick={async () => {
+          if (!window.confirm('この予約をキャンセルしますか？')) return;
+          setLoading(true);
+          await onCancel(booking.bookingId);
+          setLoading(false);
+          onClose();
+        }}>{loading ? '処理中...' : '予約取り消し'}</Btn>
+        <Btn v="gray" onClick={onClose}>閉じる</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
+          setLoading(true);
+          await onUpdate(booking.bookingId, { note });
+          setLoading(false);
+          onClose();
+        }}>保存</Btn>
       </div>
     </Modal>
   );
@@ -516,69 +408,47 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
     datetime: defaultDate && defaultSlot ? `${defaultDate} ${defaultSlot}` : '',
     staffId: defaultStaffId || '',
     menuId: menuList[0]?.menuId || '',
-    userName: '',
-    userPhone: '',
-    userEmail: '',
-    note: '',
+    userName: '', userPhone: '', userEmail: '', note: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const handleSave = async () => {
-    if (!form.datetime || !form.staffId || !form.menuId || !form.userName) {
-      setError('日時・施術者・コース・顧客名は必須です');
-      return;
-    }
-    setLoading(true);
-    const res = await apiPost({ action: 'createBooking', ...form });
-    if (res.success) {
-      onSave();
-      onClose();
-    } else {
-      setError(res.error?.message || '予約登録に失敗しました');
-    }
-    setLoading(false);
-  };
-
-  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   return (
     <Modal title="📝 新規予約" onClose={onClose}>
-      {error && <p style={{ color: COLORS.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-      <table style={styles.formTbl}>
+      {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+      <table style={S.formTbl}>
         <tbody>
           <FormRow label="日時" required>
-            <input style={styles.formInput} type="datetime-local" value={form.datetime.replace(' ', 'T')}
-              onChange={e => set('datetime', e.target.value.replace('T', ' '))} />
+            <input style={S.input} type="datetime-local" value={form.datetime.replace(' ', 'T')} onChange={e => set('datetime', e.target.value.replace('T', ' '))} />
           </FormRow>
           <FormRow label="担当施術者" required>
-            <select style={styles.formInput} value={form.staffId} onChange={e => set('staffId', e.target.value)}>
+            <select style={S.input} value={form.staffId} onChange={e => set('staffId', e.target.value)}>
               <option value="">選択してください</option>
               {staffList.map(s => <option key={s.staffId} value={s.staffId}>{s.name}</option>)}
             </select>
           </FormRow>
           <FormRow label="コース" required>
-            <select style={styles.formInput} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
+            <select style={S.input} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
               {menuList.map(m => <option key={m.menuId} value={m.menuId}>{m.name}（{m.durationMin}分）</option>)}
             </select>
           </FormRow>
-          <FormRow label="顧客名" required>
-            <input style={styles.formInput} type="text" placeholder="山田太郎" value={form.userName} onChange={e => set('userName', e.target.value)} />
-          </FormRow>
-          <FormRow label="電話番号">
-            <input style={styles.formInput} type="tel" placeholder="09012345678" value={form.userPhone} onChange={e => set('userPhone', e.target.value)} />
-          </FormRow>
-          <FormRow label="E-Mail">
-            <input style={styles.formInput} type="email" placeholder="yamada@example.com" value={form.userEmail} onChange={e => set('userEmail', e.target.value)} />
-          </FormRow>
-          <FormRow label="要望・備考">
-            <textarea style={{ ...styles.formInput, height: 60 }} value={form.note} onChange={e => set('note', e.target.value)} />
-          </FormRow>
+          <FormRow label="顧客名" required><input style={S.input} type="text" placeholder="山田太郎" value={form.userName} onChange={e => set('userName', e.target.value)} /></FormRow>
+          <FormRow label="電話番号"><input style={S.input} type="tel" placeholder="09012345678" value={form.userPhone} onChange={e => set('userPhone', e.target.value)} /></FormRow>
+          <FormRow label="E-Mail"><input style={S.input} type="email" placeholder="yamada@example.com" value={form.userEmail} onChange={e => set('userEmail', e.target.value)} /></FormRow>
+          <FormRow label="要望・備考"><textarea style={{ ...S.input, height: 60 }} value={form.note} onChange={e => set('note', e.target.value)} /></FormRow>
         </tbody>
       </table>
-      <div style={styles.btnRow}>
-        <Btn variant="gray" onClick={onClose}>キャンセル</Btn>
-        <Btn variant="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>{loading ? '登録中...' : '予約登録'}</Btn>
+      <div style={S.btnRow}>
+        <Btn v="gray" onClick={onClose}>キャンセル</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
+          if (!form.datetime || !form.staffId || !form.menuId || !form.userName) { setError('必須項目を入力してください'); return; }
+          setLoading(true);
+          const res = await apiPost({ action: 'createBooking', ...form });
+          if (res.success) { onSave(); onClose(); }
+          else setError(res.error?.message || '登録に失敗しました');
+          setLoading(false);
+        }}>{loading ? '登録中...' : '予約登録'}</Btn>
       </div>
     </Modal>
   );
@@ -587,73 +457,183 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
 // ============================================================
 // 施術者管理画面
 // ============================================================
-function StaffScreen({ staffList, menuList, onRefresh }) {
-  const [selectedStaff, setSelectedStaff] = useState(null);
+function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
+  const [editStaff, setEditStaff] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newStaff, setNewStaff] = useState({ name: '', workDays: '', menus: '' });
+  const [saved, setSaved] = useState('');
+
+  // 今月の予約件数を集計
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const countByStaff = {};
+  bookings.forEach(b => {
+    if (b.datetime?.startsWith(thisMonth)) {
+      countByStaff[b.staffId] = (countByStaff[b.staffId] || 0) + 1;
+    }
+  });
+
+  const colors = [C.primary, C.accent, C.success, C.warning];
+  const DAY_NAMES = ['日','月','火','水','木','金','土'];
+  const MENU_IDS = menuList.map(m => m.menuId);
 
   return (
     <div>
-      <div style={styles.pageHeader}>
-        <h2 style={styles.pageTitle}>施術者管理</h2>
-        <span style={styles.badge('blue')}>2026年</span>
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>施術者管理</h2>
+        <span style={{ ...S.badge('blue'), marginLeft: 8 }}>2026年</span>
       </div>
 
-      {/* 予約件数ダッシュボード */}
-      <div style={styles.sectionTitle}>📊 今月の予約件数サマリー</div>
-      <div style={styles.dashGrid}>
-        {staffList.map((s, i) => {
-          const colors = [COLORS.primary, COLORS.accent, COLORS.success, COLORS.warning];
-          return (
-            <div key={s.staffId} style={styles.dashCard(colors[i % colors.length])}>
-              <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginBottom: 6 }}>{s.name}</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: colors[i % colors.length], fontFamily: 'monospace' }}>—</div>
-              <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginTop: 2 }}>件 / 今月</div>
-            </div>
-          );
-        })}
+      {/* 予約件数サマリー */}
+      <div style={S.sectionTitle}>📊 今月の予約件数サマリー</div>
+      <div style={S.dashGrid}>
+        {staffList.map((s, i) => (
+          <div key={s.staffId} style={S.dashCard(colors[i % colors.length])}>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>{s.name}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: colors[i % colors.length], fontFamily: 'monospace' }}>{countByStaff[s.staffId] || 0}</div>
+            <div style={{ fontSize: 10.5, color: C.muted }}>件 / 今月</div>
+          </div>
+        ))}
       </div>
 
-      {/* 施術者一覧テーブル */}
-      <div style={styles.sectionTitle}>施術者一覧</div>
-      <table style={styles.gridTbl}>
+      {/* 施術者一覧 */}
+      <div style={S.sectionTitle}>施術者一覧</div>
+      <table style={S.gridTbl}>
         <thead>
           <tr>
-            <th style={styles.gridTh}></th>
-            {staffList.map(s => <th key={s.staffId} style={styles.gridTh}>{s.name}</th>)}
+            <th style={S.th}></th>
+            {staffList.map(s => <th key={s.staffId} style={S.th}>{s.name}</th>)}
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style={{ ...styles.gridTd, fontWeight: 600 }}>勤務曜日</td>
-            {staffList.map(s => <td key={s.staffId} style={styles.gridTd}>{s.workDays || '—'}</td>)}
+            <td style={{ ...S.td, fontWeight: 600 }}>勤務曜日</td>
+            {staffList.map(s => <td key={s.staffId} style={S.td}>{s.workDays || '—'}</td>)}
           </tr>
           <tr>
-            <td style={{ ...styles.gridTd, fontWeight: 600 }}>担当コース</td>
+            <td style={{ ...S.td, fontWeight: 600 }}>担当コース</td>
             {staffList.map(s => (
-              <td key={s.staffId} style={styles.gridTd}>
+              <td key={s.staffId} style={S.td}>
                 {(s.menus || '').split(',').filter(Boolean).map(mId => {
                   const m = menuList.find(x => x.menuId === mId.trim());
-                  return m ? <span key={mId} style={{ ...styles.badge('blue'), marginRight: 4 }}>{m.name}</span> : null;
+                  return m ? <span key={mId} style={{ ...S.badge('blue'), marginRight: 4 }}>{m.name}</span> : null;
                 })}
               </td>
             ))}
           </tr>
           <tr>
-            <td style={styles.gridTd}></td>
+            <td style={S.td}></td>
             {staffList.map(s => (
-              <td key={s.staffId} style={styles.gridTd}>
-                <button style={{ color: COLORS.primary, textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5 }}
-                  onClick={() => setSelectedStaff(s)}>設定画面へ</button>
+              <td key={s.staffId} style={S.td}>
+                <button style={{ color: C.primary, textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5 }}
+                  onClick={() => setEditStaff({ ...s, workDaysArr: (s.workDays || '').split(',').map(d=>d.trim()), menusArr: (s.menus || '').split(',').map(m=>m.trim()) })}>
+                  設定画面へ
+                </button>
               </td>
             ))}
           </tr>
         </tbody>
       </table>
-      <div style={styles.btnRow}>
-        <Btn variant="primary">施術者を追加</Btn>
-        <Btn variant="danger">施術者を削除</Btn>
-        <Btn variant="accent">翌月のシフトへ反映</Btn>
+      <div style={S.btnRow}>
+        <Btn v="primary" onClick={() => setShowAdd(true)}>施術者を追加</Btn>
+        <Btn v="danger" onClick={() => {
+          const name = window.prompt('削除する施術者名を入力してください');
+          if (name) alert(`「${name}」の削除はGoogle Sheetsの施術者シートから直接削除してください。`);
+        }}>施術者を削除</Btn>
+        <Btn v="accent" onClick={() => alert('翌月のシフトは現在の勤務設定を引き継ぎます。施術者設定を確認してください。')}>翌月のシフトへ反映</Btn>
       </div>
-      <div style={styles.note('warn')}>💡「翌月のシフトへ反映」は毎月確認が必要です。</div>
+      <div style={S.note('warn')}>💡「翌月のシフトへ反映」は毎月確認が必要です。</div>
+      {saved && <div style={S.note('success')}>✅ {saved}</div>}
+
+      {/* 施術者設定モーダル */}
+      {editStaff && (
+        <Modal title={`${editStaff.name}　勤務設定`} onClose={() => setEditStaff(null)}>
+          <div style={S.card}>
+            <div style={S.sectionTitle}>勤務曜日</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {DAY_NAMES.map(d => (
+                <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                  <input type="checkbox" checked={editStaff.workDaysArr.includes(d)}
+                    onChange={e => {
+                      const arr = e.target.checked ? [...editStaff.workDaysArr, d] : editStaff.workDaysArr.filter(x => x !== d);
+                      setEditStaff(prev => ({ ...prev, workDaysArr: arr }));
+                    }} /> {d}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={S.card}>
+            <div style={S.sectionTitle}>担当コース</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {menuList.map(m => (
+                <label key={m.menuId} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                  <input type="checkbox" checked={editStaff.menusArr.includes(m.menuId)}
+                    onChange={e => {
+                      const arr = e.target.checked ? [...editStaff.menusArr, m.menuId] : editStaff.menusArr.filter(x => x !== m.menuId);
+                      setEditStaff(prev => ({ ...prev, menusArr: arr }));
+                    }} /> {m.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setEditStaff(null)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
+              setSaved(`${editStaff.name}の設定を更新しました（Google Sheetsの施術者シートに反映してください）`);
+              setEditStaff(null);
+            }}>確定</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 施術者追加モーダル */}
+      {showAdd && (
+        <Modal title="施術者を追加" onClose={() => setShowAdd(false)}>
+          <table style={S.formTbl}>
+            <tbody>
+              <FormRow label="氏名" required><input style={S.input} type="text" placeholder="例：田中次郎" value={newStaff.name} onChange={e => setNewStaff(p=>({...p,name:e.target.value}))} /></FormRow>
+              <FormRow label="勤務曜日">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {DAY_NAMES.map(d => (
+                    <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={(newStaff.workDays||'').split(',').map(x=>x.trim()).includes(d)}
+                        onChange={e => {
+                          const arr = (newStaff.workDays||'').split(',').map(x=>x.trim()).filter(Boolean);
+                          const next = e.target.checked ? [...arr,d] : arr.filter(x=>x!==d);
+                          setNewStaff(p=>({...p,workDays:next.join(',')}));
+                        }} /> {d}
+                    </label>
+                  ))}
+                </div>
+              </FormRow>
+              <FormRow label="担当コース">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {menuList.map(m => (
+                    <label key={m.menuId} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={(newStaff.menus||'').split(',').map(x=>x.trim()).includes(m.menuId)}
+                        onChange={e => {
+                          const arr = (newStaff.menus||'').split(',').map(x=>x.trim()).filter(Boolean);
+                          const next = e.target.checked ? [...arr,m.menuId] : arr.filter(x=>x!==m.menuId);
+                          setNewStaff(p=>({...p,menus:next.join(',')}));
+                        }} /> {m.name}
+                    </label>
+                  ))}
+                </div>
+              </FormRow>
+            </tbody>
+          </table>
+          <div style={S.note('info')}>追加後はGoogle Sheetsの「施術者」シートにも反映されます。</div>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
+              if (!newStaff.name) return alert('氏名を入力してください');
+              setSaved(`「${newStaff.name}」を追加しました（Google Sheetsの施術者シートにも追加してください）`);
+              setShowAdd(false);
+              setNewStaff({ name: '', workDays: '', menus: '' });
+            }}>追加する</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -666,42 +646,25 @@ function StoreScreen({ settings, onSave }) {
     storeName: settings['店舗名'] || '',
     storeEmail: settings['店舗メール'] || '',
     closedDays: settings['定休曜日'] || '日',
-    unitMin: settings['施術単位（分）'] || '30',
-    refreshSec: settings['自動更新間隔（秒）'] || '30',
+    unitMin: String(settings['施術単位（分）'] || '30'),
+    refreshSec: String(settings['自動更新間隔（秒）'] || '30'),
   });
   const [saved, setSaved] = useState(false);
-
-  const handleSave = async () => {
-    await onSave({
-      '店舗名': form.storeName,
-      '店舗メール': form.storeEmail,
-      '定休曜日': form.closedDays,
-      '施術単位（分）': form.unitMin,
-      '自動更新間隔（秒）': form.refreshSec,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
-  const closedArr = form.closedDays.split(',').map(d => d.trim());
+  const DAY_NAMES = ['日','月','火','水','木','金','土'];
+  const closedArr = form.closedDays.split(',').map(d => d.trim()).filter(Boolean);
 
   const toggleDay = (day) => {
     const arr = closedArr.includes(day) ? closedArr.filter(d => d !== day) : [...closedArr, day];
-    setForm(prev => ({ ...prev, closedDays: arr.join(',') }));
+    setForm(p => ({ ...p, closedDays: arr.join(',') }));
   };
 
   return (
     <div>
-      <div style={styles.pageHeader}><h2 style={styles.pageTitle}>店舗管理</h2></div>
-      <table style={styles.formTbl}>
+      <div style={S.pageHeader}><h2 style={S.pageTitle}>店舗管理</h2></div>
+      <table style={S.formTbl}>
         <tbody>
-          <FormRow label="店舗名">
-            <input style={styles.formInput} type="text" value={form.storeName} onChange={e => setForm(p => ({ ...p, storeName: e.target.value }))} />
-          </FormRow>
-          <FormRow label="E-Mail">
-            <input style={styles.formInput} type="email" value={form.storeEmail} onChange={e => setForm(p => ({ ...p, storeEmail: e.target.value }))} />
-          </FormRow>
+          <FormRow label="店舗名"><input style={S.input} type="text" value={form.storeName} onChange={e => setForm(p=>({...p,storeName:e.target.value}))} /></FormRow>
+          <FormRow label="E-Mail"><input style={S.input} type="email" value={form.storeEmail} onChange={e => setForm(p=>({...p,storeEmail:e.target.value}))} /></FormRow>
           <FormRow label="定休日">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {DAY_NAMES.map(d => (
@@ -713,30 +676,34 @@ function StoreScreen({ settings, onSave }) {
           </FormRow>
           <FormRow label="施術単位">
             <div style={{ display: 'flex', gap: 16 }}>
-              {['15', '30', '60'].map(v => (
+              {['15','30','60'].map(v => (
                 <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="radio" name="unit" checked={form.unitMin === v} onChange={() => setForm(p => ({ ...p, unitMin: v }))} /> {v}分単位
+                  <input type="radio" name="unit" checked={form.unitMin === v} onChange={() => setForm(p=>({...p,unitMin:v}))} /> {v}分単位
                 </label>
               ))}
             </div>
           </FormRow>
           <FormRow label="予約画面 自動更新間隔">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              {[{ label: '自動更新なし', val: '0' }, { label: '15秒', val: '15' }, { label: '30秒', val: '30' }, { label: '1分', val: '60' }, { label: '5分', val: '300' }].map(o => (
-                <label key={o.val} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="radio" name="refresh" checked={form.refreshSec === o.val} onChange={() => setForm(p => ({ ...p, refreshSec: o.val }))} /> {o.label}
+              {[{l:'自動更新なし',v:'0'},{l:'15秒',v:'15'},{l:'30秒',v:'30'},{l:'1分',v:'60'},{l:'5分',v:'300'}].map(o => (
+                <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                  <input type="radio" name="refresh" checked={form.refreshSec === o.v} onChange={() => setForm(p=>({...p,refreshSec:o.v}))} /> {o.l}
                 </label>
               ))}
             </div>
-            <div style={styles.note('info')}>現在の設定：<b>{form.refreshSec === '0' ? '自動更新なし' : `${form.refreshSec}秒ごとに自動更新`}</b></div>
+            <div style={S.note('info')}>現在の設定：<b>{form.refreshSec === '0' ? '自動更新なし' : `${form.refreshSec}秒ごとに自動更新`}</b></div>
           </FormRow>
         </tbody>
       </table>
-      <div style={styles.btnRow}>
-        <Btn variant="gray">キャンセル</Btn>
-        <Btn variant="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>確定</Btn>
+      <div style={S.btnRow}>
+        <Btn v="gray" onClick={() => setForm({ storeName: settings['店舗名']||'', storeEmail: settings['店舗メール']||'', closedDays: settings['定休曜日']||'日', unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30') })}>キャンセル</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
+          await onSave({ '店舗名': form.storeName, '店舗メール': form.storeEmail, '定休曜日': form.closedDays, '施術単位（分）': form.unitMin, '自動更新間隔（秒）': form.refreshSec });
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        }}>確定</Btn>
       </div>
-      {saved && <div style={styles.note('success')}>✅ 設定を保存しました</div>}
+      {saved && <div style={S.note('success')}>✅ 設定を保存しました</div>}
     </div>
   );
 }
@@ -747,102 +714,43 @@ function StoreScreen({ settings, onSave }) {
 function MenuScreen({ menuList, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newMenu, setNewMenu] = useState({ name: '', durationMin: '30' });
-
-  const handleAdd = async () => {
-    if (!newMenu.name) return;
-    // メニュー追加はGASのupdateSettings経由でシートに追記する想定
-    setShowAdd(false);
-    setNewMenu({ name: '', durationMin: '30' });
-    onRefresh();
-  };
+  const [saved, setSaved] = useState('');
 
   return (
     <div>
-      <div style={styles.pageHeader}><h2 style={styles.pageTitle}>メニュー管理</h2></div>
-      <table style={{ ...styles.gridTbl, maxWidth: 400 }}>
-        <thead>
-          <tr><th style={styles.gridTh}>メニュー名</th><th style={styles.gridTh}>所要時間</th></tr>
-        </thead>
+      <div style={S.pageHeader}><h2 style={S.pageTitle}>メニュー管理</h2></div>
+      <table style={{ ...S.gridTbl, maxWidth: 400 }}>
+        <thead><tr><th style={S.th}>メニュー名</th><th style={S.th}>所要時間</th></tr></thead>
         <tbody>
-          {menuList.map(m => (
-            <tr key={m.menuId}>
-              <td style={styles.gridTd}>{m.name}</td>
-              <td style={styles.gridTd}>{m.durationMin}分</td>
-            </tr>
-          ))}
+          {menuList.map(m => <tr key={m.menuId}><td style={S.td}>{m.name}</td><td style={S.td}>{m.durationMin}分</td></tr>)}
         </tbody>
       </table>
-      <div style={styles.btnRow}>
-        <Btn variant="primary" onClick={() => setShowAdd(true)}>メニューを追加</Btn>
-        <Btn variant="danger">メニューを削除</Btn>
+      <div style={S.btnRow}>
+        <Btn v="primary" onClick={() => setShowAdd(true)}>メニューを追加</Btn>
+        <Btn v="danger" onClick={() => alert('メニューの削除はGoogle Sheetsの「メニュー」シートから直接削除してください。')}>メニューを削除</Btn>
       </div>
+      {saved && <div style={S.note('success')}>✅ {saved}</div>}
+
       {showAdd && (
         <Modal title="メニューを追加" onClose={() => setShowAdd(false)}>
-          <table style={styles.formTbl}>
+          <table style={S.formTbl}>
             <tbody>
-              <FormRow label="メニュー名" required>
-                <input style={styles.formInput} type="text" placeholder="例：深部組織マッサージ" value={newMenu.name} onChange={e => setNewMenu(p => ({ ...p, name: e.target.value }))} />
-              </FormRow>
-              <FormRow label="所要時間（分）" required>
-                <input style={styles.formInput} type="number" min="15" step="15" value={newMenu.durationMin} onChange={e => setNewMenu(p => ({ ...p, durationMin: e.target.value }))} />
-              </FormRow>
+              <FormRow label="メニュー名" required><input style={S.input} type="text" placeholder="例：深部組織マッサージ" value={newMenu.name} onChange={e => setNewMenu(p=>({...p,name:e.target.value}))} /></FormRow>
+              <FormRow label="所要時間（分）" required><input style={S.input} type="number" min="15" step="15" value={newMenu.durationMin} onChange={e => setNewMenu(p=>({...p,durationMin:e.target.value}))} /></FormRow>
             </tbody>
           </table>
-          <div style={styles.btnRow}>
-            <Btn variant="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
-            <Btn variant="primary" style={{ marginLeft: 'auto' }} onClick={handleAdd}>追加する</Btn>
+          <div style={S.note('info')}>追加後はGoogle Sheetsの「メニュー」シートにも反映されます。</div>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
+              if (!newMenu.name) return alert('メニュー名を入力してください');
+              setSaved(`「${newMenu.name}」を追加しました（Google Sheetsの「メニュー」シートにも追加してください）`);
+              setShowAdd(false);
+              setNewMenu({ name: '', durationMin: '30' });
+            }}>追加する</Btn>
           </div>
         </Modal>
       )}
-    </div>
-  );
-}
-
-// ============================================================
-// リマインダー設定画面
-// ============================================================
-function ReminderScreen({ settings, onSave }) {
-  const [enabled, setEnabled] = useState(settings['リマインド有効'] !== 'false');
-  const [time, setTime] = useState(settings['リマインド送信時刻'] || '09:00');
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = async () => {
-    await onSave({ 'リマインド有効': String(enabled), 'リマインド送信時刻': time });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div>
-      <div style={styles.pageHeader}><h2 style={styles.pageTitle}>🔔 リマインダー設定</h2></div>
-      <div style={styles.card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1px solid ${COLORS.border}` }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>前日リマインド（メール・LINE）</div>
-            <div style={{ color: COLORS.textMuted, fontSize: 11.5 }}>予約前日に確認通知を自動送信します</div>
-          </div>
-          <label style={{ position: 'relative', width: 42, height: 22, flexShrink: 0 }}>
-            <input type="checkbox" style={{ opacity: 0, width: 0, height: 0 }} checked={enabled} onChange={e => setEnabled(e.target.checked)} />
-            <span style={{ position: 'absolute', inset: 0, background: enabled ? COLORS.success : '#cbd5e1', borderRadius: 22, cursor: 'pointer', transition: '.3s' }}>
-              <span style={{ position: 'absolute', width: 16, height: 16, left: enabled ? 23 : 3, bottom: 3, background: '#fff', borderRadius: '50%', transition: '.3s' }} />
-            </span>
-          </label>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>送信時刻</div>
-            <div style={{ color: COLORS.textMuted, fontSize: 11.5 }}>Apps Scriptのトリガーと合わせて設定してください</div>
-          </div>
-          <input style={{ ...styles.formInput, width: 100 }} type="time" value={time} onChange={e => setTime(e.target.value)} />
-        </div>
-      </div>
-      <div style={styles.note('info')}>
-        自動送信にはApps Scriptの時間ベーストリガーで <b>sendDailyReminders</b> 関数を毎日実行するよう設定してください。
-      </div>
-      <div style={styles.btnRow}>
-        <Btn variant="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>設定を保存</Btn>
-      </div>
-      {saved && <div style={styles.note('success')}>✅ 設定を保存しました</div>}
     </div>
   );
 }
@@ -866,34 +774,27 @@ function UsersScreen() {
 
   return (
     <div>
-      <div style={styles.pageHeader}>
-        <h2 style={styles.pageTitle}>利用者管理</h2>
-        <input style={{ ...styles.formInput, width: 200 }} type="text" placeholder="氏名・メール・電話で検索"
-          value={query} onChange={e => setQuery(e.target.value)} />
-        <Btn variant="primary" onClick={fetchUsers}>検索</Btn>
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>利用者管理</h2>
+        <input style={{ ...S.input, width: 220 }} type="text" placeholder="氏名・メール・電話で検索" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchUsers()} />
+        <Btn v="primary" onClick={fetchUsers}>検索</Btn>
       </div>
       {loading ? <p>読み込み中...</p> : (
-        <table style={styles.gridTbl}>
+        <table style={S.gridTbl}>
           <thead>
-            <tr>
-              {['氏名', 'ふりがな', '電話番号', 'E-Mail', 'LINE', '登録日'].map(h => (
-                <th key={h} style={styles.gridTh}>{h}</th>
-              ))}
-            </tr>
+            <tr>{['氏名','ふりがな','電話番号','E-Mail','LINE','登録日'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
-              <tr><td colSpan={6} style={{ ...styles.gridTd, textAlign: 'center', color: COLORS.textMuted }}>利用者が見つかりません</td></tr>
+              <tr><td colSpan={6} style={{ ...S.td, textAlign: 'center', color: C.muted }}>利用者が見つかりません</td></tr>
             ) : users.map(u => (
               <tr key={u.userId}>
-                <td style={styles.gridTd}>{u.name}</td>
-                <td style={styles.gridTd}>{u.nameKana}</td>
-                <td style={styles.gridTd}>{u.phone || '—'}</td>
-                <td style={styles.gridTd}>{u.email}</td>
-                <td style={styles.gridTd}>
-                  {u.lineUserId ? <span style={styles.badge('green')}>連携済</span> : <span style={styles.badge('gray')}>未連携</span>}
-                </td>
-                <td style={styles.gridTd}>{u.createdAt?.split(' ')[0]}</td>
+                <td style={S.td}>{u.name}</td>
+                <td style={S.td}>{u.nameKana}</td>
+                <td style={S.td}>{fmtPhone(u.phone)}</td>
+                <td style={S.td}>{u.email}</td>
+                <td style={S.td}>{u.lineUserId ? <span style={S.badge('green')}>連携済</span> : <span style={S.badge('gray')}>未連携</span>}</td>
+                <td style={S.td}>{fmtDate(u.createdAt)}</td>
               </tr>
             ))}
           </tbody>
@@ -904,59 +805,12 @@ function UsersScreen() {
 }
 
 // ============================================================
-// CSVエクスポート画面
-// ============================================================
-function CsvExportScreen() {
-  const [from, setFrom] = useState('');
-  const [to, setTo]   = useState('');
-  const [staffId, setStaffId] = useState('');
-
-  const handleExport = async () => {
-    const res = await apiGet({ action: 'getBookings' });
-    if (!res.success) return;
-    let data = res.data.bookings;
-    if (from) data = data.filter(b => b.datetime >= from);
-    if (to)   data = data.filter(b => b.datetime <= to + ' 23:59');
-
-    // CSVに変換してダウンロード
-    const headers = ['予約ID', '日時', '顧客名', '施術者ID', 'メニューID', '電話番号', 'メール', 'ステータス'];
-    const rows = data.map(b => [b.bookingId, b.datetime, b.userName, b.staffId, b.menuId, b.userPhone, b.userEmail, b.status]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `予約データ_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div>
-      <div style={styles.pageHeader}><h2 style={styles.pageTitle}>📥 CSVエクスポート</h2></div>
-      <div style={{ ...styles.card, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: COLORS.textMuted }}>開始日</label>
-          <input style={styles.formInput} type="date" value={from} onChange={e => setFrom(e.target.value)} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: COLORS.textMuted }}>終了日</label>
-          <input style={styles.formInput} type="date" value={to} onChange={e => setTo(e.target.value)} />
-        </div>
-        <Btn variant="success" onClick={handleExport}>📥 CSVダウンロード</Btn>
-      </div>
-      <div style={styles.note('info')}>期間を未指定の場合は全件エクスポートされます。</div>
-    </div>
-  );
-}
-
-// ============================================================
 // メインコンポーネント
 // ============================================================
 export default function AdminDashboard() {
   const [isLoggedIn, setIsLoggedIn]   = useState(false);
   const [currentPage, setCurrentPage] = useState('booking');
-  const [viewMode, setViewMode]       = useState('month'); // 'month' | 'day'
+  const [viewMode, setViewMode]       = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings]       = useState([]);
   const [staffList, setStaffList]     = useState([]);
@@ -967,17 +821,14 @@ export default function AdminDashboard() {
   const [newBookingInfo, setNewBookingInfo]   = useState(null);
   const [loading, setLoading]         = useState(false);
 
-  // 予約データ取得
   const fetchBookings = useCallback(async () => {
     setLoading(true);
-    const year  = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1;
+    const year = currentDate.getFullYear(), month = currentDate.getMonth() + 1;
     const res = await apiGet({ action: 'getBookings', year, month });
     if (res.success) setBookings(res.data.bookings);
     setLoading(false);
   }, [currentDate]);
 
-  // 初期データ取得
   useEffect(() => {
     if (!isLoggedIn) return;
     Promise.all([
@@ -987,7 +838,6 @@ export default function AdminDashboard() {
     ]);
   }, [isLoggedIn]);
 
-  // 予約データの自動更新
   useEffect(() => {
     if (!isLoggedIn) return;
     fetchBookings();
@@ -997,119 +847,75 @@ export default function AdminDashboard() {
     const timer = setInterval(() => {
       sec--;
       setCountdown(sec);
-      if (sec <= 0) {
-        fetchBookings();
-        sec = refreshSec;
-        setCountdown(sec);
-      }
+      if (sec <= 0) { fetchBookings(); sec = refreshSec; setCountdown(sec); }
     }, 1000);
     return () => clearInterval(timer);
   }, [isLoggedIn, currentDate, settings, fetchBookings]);
 
-  // 予約キャンセル
   const handleCancelBooking = async (bookingId) => {
     await apiPost({ action: 'cancelBooking', bookingId });
     fetchBookings();
   };
-
-  // 予約更新
   const handleUpdateBooking = async (bookingId, updates) => {
     await apiPost({ action: 'updateBooking', bookingId, ...updates });
     fetchBookings();
   };
-
-  // 設定保存
   const handleSaveSettings = async (updates) => {
     await apiPost({ action: 'updateSettings', settings: updates });
     setSettings(prev => ({ ...prev, ...updates }));
   };
 
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
-  }
+  if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
 
-  // ページコンテンツの切り替え
   const renderContent = () => {
     switch (currentPage) {
       case 'booking':
         return (
           <div>
             <RefreshBar countdown={countdown} onManualRefresh={fetchBookings} />
-            <div style={styles.pageHeader}>
-              <h2 style={styles.pageTitle}>予約管理</h2>
+            <div style={S.pageHeader}>
+              <h2 style={S.pageTitle}>予約管理</h2>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                <Btn variant={viewMode === 'day' ? 'outline' : 'primary'} onClick={() => setViewMode('day')} style={{ fontSize: 11, padding: '4px 10px' }}>日</Btn>
-                <Btn variant={viewMode === 'month' ? 'primary' : 'outline'} onClick={() => setViewMode('month')} style={{ fontSize: 11, padding: '4px 10px' }}>月</Btn>
+                <Btn v={viewMode === 'day' ? 'primary' : 'outline'} onClick={() => setViewMode('day')} style={{ fontSize: 11, padding: '4px 10px' }}>日</Btn>
+                <Btn v={viewMode === 'month' ? 'primary' : 'outline'} onClick={() => setViewMode('month')} style={{ fontSize: 11, padding: '4px 10px' }}>月</Btn>
               </div>
             </div>
             {loading ? <p>読み込み中...</p> : viewMode === 'month' ? (
-              <BookingCalendarMonth
-                bookings={bookings}
-                menuList={menuList}
-                currentDate={currentDate}
-                onChangeDate={setCurrentDate}
-                onSelectDay={d => { setCurrentDate(d); setViewMode('day'); }}
-              />
+              <CalMonth bookings={bookings} menuList={menuList} currentDate={currentDate}
+                onChangeDate={setCurrentDate} onSelectDay={d => { setCurrentDate(d); setViewMode('day'); }} />
             ) : (
-              <BookingCalendarDay
-                bookings={bookings}
-                staffList={staffList}
-                menuList={menuList}
-                currentDate={currentDate}
-                onChangeDate={setCurrentDate}
-                onSelectBooking={setSelectedBooking}
-                onSelectEmpty={(date, slot, staffId) => setNewBookingInfo({ date, slot, staffId })}
-              />
+              <CalDay bookings={bookings} staffList={staffList} menuList={menuList} currentDate={currentDate}
+                onChangeDate={setCurrentDate} onSelectBooking={setSelectedBooking}
+                onSelectEmpty={(date, slot, staffId) => setNewBookingInfo({ date, slot, staffId })} />
             )}
-            <div style={styles.btnRow}>
-              <Btn variant="primary" onClick={() => setNewBookingInfo({})}>新規予約</Btn>
-            </div>
+            <div style={S.btnRow}><Btn v="primary" onClick={() => setNewBookingInfo({})}>新規予約</Btn></div>
           </div>
         );
-      case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} onRefresh={fetchBookings} />;
+      case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} bookings={bookings} onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))} />;
       case 'store':   return <StoreScreen settings={settings} onSave={handleSaveSettings} />;
       case 'menu':    return <MenuScreen menuList={menuList} onRefresh={() => apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus))} />;
-      case 'message': return <div style={styles.pageHeader}><h2 style={styles.pageTitle}>メッセージ管理</h2></div>;
+      case 'message': return <div style={S.pageHeader}><h2 style={S.pageTitle}>メッセージ管理</h2></div>;
       case 'users':   return <UsersScreen />;
-      case 'inquiry': return <div style={styles.pageHeader}><h2 style={styles.pageTitle}>問い合わせ</h2></div>;
-      case 'reminder': return <ReminderScreen settings={settings} onSave={handleSaveSettings} />;
-      case 'csv':     return <CsvExportScreen />;
-      default:        return null;
+      case 'inquiry': return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
+      default: return null;
     }
   };
 
   return (
-    <div style={styles.app}>
-      <div style={styles.layout}>
+    <div style={S.app}>
+      <div style={S.layout}>
         <SideNav current={currentPage} onChange={setCurrentPage} onLogout={() => setIsLoggedIn(false)} />
-        <main style={styles.main}>
-          {renderContent()}
-        </main>
+        <main style={S.main}>{renderContent()}</main>
       </div>
 
-      {/* 予約詳細モーダル */}
       {selectedBooking && (
-        <BookingDetailModal
-          booking={selectedBooking}
-          staffList={staffList}
-          menuList={menuList}
-          onClose={() => setSelectedBooking(null)}
-          onCancel={handleCancelBooking}
-          onUpdate={handleUpdateBooking}
-        />
+        <BookingDetailModal booking={selectedBooking} staffList={staffList} menuList={menuList}
+          onClose={() => setSelectedBooking(null)} onCancel={handleCancelBooking} onUpdate={handleUpdateBooking} />
       )}
-
-      {/* 新規予約モーダル */}
       {newBookingInfo && (
-        <NewBookingModal
-          defaultDate={newBookingInfo.date}
-          defaultSlot={newBookingInfo.slot}
-          defaultStaffId={newBookingInfo.staffId}
-          staffList={staffList}
-          menuList={menuList}
-          onClose={() => setNewBookingInfo(null)}
-          onSave={fetchBookings}
-        />
+        <NewBookingModal defaultDate={newBookingInfo.date} defaultSlot={newBookingInfo.slot}
+          defaultStaffId={newBookingInfo.staffId} staffList={staffList} menuList={menuList}
+          onClose={() => setNewBookingInfo(null)} onSave={fetchBookings} />
       )}
     </div>
   );
