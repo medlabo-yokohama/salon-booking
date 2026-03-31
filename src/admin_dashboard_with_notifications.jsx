@@ -266,7 +266,7 @@ function LoginScreen({ onLogin }) {
 // ============================================================
 // 予約管理：月カレンダー
 // ============================================================
-function BookingCalendarMonth({ bookings, currentDate, onChangeDate, onSelectDay }) {
+function BookingCalendarMonth({ bookings, menuList, currentDate, onChangeDate, onSelectDay }) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
@@ -336,11 +336,14 @@ function BookingCalendarMonth({ bookings, currentDate, onChangeDate, onSelectDay
                           {d}
                           {isToday(d) && <span style={{ marginLeft: 4, fontSize: 9, background: COLORS.primary, color: '#fff', borderRadius: 3, padding: '0 3px' }}>今日</span>}
                         </div>
-                        {dayBookings.slice(0, 3).map((b, bi) => (
-                          <div key={bi} style={styles.calEvent}>
-                            {b.datetime?.split(' ')[1]?.substring(0, 5)} {b.userName}
-                          </div>
-                        ))}
+                        {dayBookings.slice(0, 3).map((b, bi) => {
+                          const mName = menuList.find(m => m.menuId === b.menuId)?.name || b.menuId;
+                          return (
+                            <div key={bi} style={styles.calEvent}>
+                              {b.datetime?.split(' ')[1]?.substring(0, 5)} {b.userName}（{mName}）
+                            </div>
+                          );
+                        })}
                         {dayBookings.length > 3 && (
                           <div style={{ fontSize: 10, color: COLORS.textMuted }}>+{dayBookings.length - 3}件</div>
                         )}
@@ -361,7 +364,7 @@ function BookingCalendarMonth({ bookings, currentDate, onChangeDate, onSelectDay
 // ============================================================
 // 予約管理：日ビュー
 // ============================================================
-function BookingCalendarDay({ bookings, staffList, currentDate, onChangeDate, onSelectBooking, onSelectEmpty }) {
+function BookingCalendarDay({ bookings, staffList, menuList, currentDate, onChangeDate, onSelectBooking, onSelectEmpty }) {
   const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const dayName = DAY_NAMES[currentDate.getDay()];
   const pad = n => String(n).padStart(2, '0');
@@ -428,10 +431,12 @@ function BookingCalendarDay({ bookings, staffList, currentDate, onChangeDate, on
                     </td>;
                   }
                   if (booking) {
+                    // menuIdからメニュー名、staffIdから施術者名を取得して表示
+                    const menuName  = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
                     return (
                       <td key={s.staffId} style={styles.dayTd('booked')} onClick={() => onSelectBooking(booking)}>
                         <div style={{ fontSize: 10.5, color: COLORS.primary, fontWeight: 500, lineHeight: 1.4 }}>
-                          {booking.menuId} / {booking.userName}
+                          {menuName} / {booking.userName}
                         </div>
                       </td>
                     );
@@ -1040,6 +1045,7 @@ export default function AdminDashboard() {
             {loading ? <p>読み込み中...</p> : viewMode === 'month' ? (
               <BookingCalendarMonth
                 bookings={bookings}
+                menuList={menuList}
                 currentDate={currentDate}
                 onChangeDate={setCurrentDate}
                 onSelectDay={d => { setCurrentDate(d); setViewMode('day'); }}
@@ -1048,6 +1054,7 @@ export default function AdminDashboard() {
               <BookingCalendarDay
                 bookings={bookings}
                 staffList={staffList}
+                menuList={menuList}
                 currentDate={currentDate}
                 onChangeDate={setCurrentDate}
                 onSelectBooking={setSelectedBooking}
