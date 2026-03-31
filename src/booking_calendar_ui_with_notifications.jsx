@@ -1,605 +1,698 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Check, X, Phone, Mail } from 'lucide-react';
+// ============================================================
+// booking_calendar_ui_with_notifications.jsx
+// 顧客向け予約フォーム（月カレンダー・日ビュー・予約確認）
+// ============================================================
+import React, { useState, useEffect, useCallback } from 'react';
 
-/**
- * リマインド・キャンセル通知機能対応版顧客向けUI
- */
-export default function BookingCalendarUIWithNotifications() {
-  // ========== 状態管理 ==========
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [bookings, setBookings] = useState([]);
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [userInfo, setUserInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
-  const [availableTimes, setAvailableTimes] = useState([]);
+const GAS_URL = import.meta.env.VITE_GAS_URL || '';
 
-  // 設定
-  const [staffList, setStaffList] = useState(['田中スタイリスト', '鈴木スタイリスト', '佐藤スタイリスト']);
-  const [businessHours, setBusinessHours] = useState({
-    startTime: '09:00',
-    endTime: '18:00',
-    interval: 30,
-  });
-  const [staffOffDays, setStaffOffDays] = useState({});
+// ============================================================
+// APIクライアント
+// ============================================================
+async function apiGet(params) {
+  const url = new URL(GAS_URL);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  return res.json();
+}
 
-  const [formData, setFormData] = useState({
-    customerName: '',
-    customerPhone: '',
-    customerEmail: '',
-    service: '',
-    note: '',
-    notificationMethod: 'email', // ← 新規: 通知方法 (email / line / both)
-  });
+async function apiPost(body) {
+  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) });
+  return res.json();
+}
 
-  const serviceList = ['カット', 'カラー', 'パーマ', 'トリートメント', 'セット'];
-  const BACKEND_URL = 'https://script.google.com/macros/d/{DEPLOYMENT_ID}/usercallable';
+// ============================================================
+// スタイル定数
+// ============================================================
+const C = {
+  primary: '#1a4f8a', primaryPale: '#dbeafe', accent: '#0ea5e9',
+  danger: '#dc2626', success: '#059669', warning: '#f59e0b',
+  bg: '#f0f4f8', surface: '#ffffff', border: '#cbd5e1',
+  text: '#1e293b', muted: '#64748b',
+};
 
-  // ========== 初期化 ==========
-  useEffect(() => {
-    const savedStaffList = localStorage.getItem('staffList');
-    const savedBusinessHours = localStorage.getItem('businessHours');
-    const savedOffDays = localStorage.getItem('staffOffDays');
+const S = {
+  wrap: { width: '100%', maxWidth: 480, margin: '0 auto', background: C.surface, minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: "'Noto Sans JP', sans-serif", fontSize: 13 },
+  header: { background: C.primary, color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 10 },
+  headerTitle: { fontSize: 15, fontWeight: 700, flex: 1 },
+  backBtn: { background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer' },
+  body: { flex: 1, padding: '14px 16px', overflowY: 'auto' },
+  nav: { display: 'flex', background: C.surface, borderTop: `1px solid ${C.border}`, position: 'sticky', bottom: 0, zIndex: 10 },
+  navLink: (active) => ({ flex: 1, textAlign: 'center', padding: '8px 4px', fontSize: 10, color: active ? C.primary : C.muted, textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', fontWeight: active ? 700 : 400 }),
+  navIcon: { fontSize: 18 },
+  // ログイン画面
+  loginWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '32px 16px', background: 'linear-gradient(160deg, #1a4f8a 0%, #0ea5e9 100%)' },
+  loginCard: { background: '#fff', borderRadius: 16, padding: '28px 24px', width: '100%', maxWidth: 360, boxShadow: '0 20px 60px rgba(0,0,0,.2)' },
+  lineBtn: { width: '100%', background: '#06C755', color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  emailBtn: { width: '100%', background: C.primary, color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 },
+  textBtn: { width: '100%', background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 8, padding: 11, fontFamily: 'inherit', fontSize: 13, color: C.muted, cursor: 'pointer' },
+  // フォーム
+  formTbl: { width: '100%', borderCollapse: 'collapse', background: C.surface, borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.10)' },
+  formTh: { background: '#f1f5f9', fontWeight: 600, width: 120, color: C.text, border: `1px solid ${C.border}`, padding: '9px 12px', fontSize: 12.5, textAlign: 'left' },
+  formTd: { color: C.muted, border: `1px solid ${C.border}`, padding: '9px 12px', fontSize: 12.5 },
+  formInput: { width: '100%', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', fontFamily: 'inherit', fontSize: 12.5, color: C.text, background: '#f8fafc', boxSizing: 'border-box' },
+  btn: (variant) => {
+    const v = { primary: { background: C.primary, color: '#fff' }, danger: { background: C.danger, color: '#fff' }, gray: { background: '#e2e8f0', color: C.text }, success: { background: C.success, color: '#fff' } };
+    return { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 16px', border: 'none', borderRadius: 6, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', ...(v[variant] || v.primary) };
+  },
+  btnRow: { display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' },
+  card: { background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '14px 16px', marginBottom: 12 },
+  badge: { green: { background: '#d1fae5', color: '#065f46' }, orange: { background: '#fef3c7', color: '#92400e' }, gray: { background: '#e2e8f0', color: '#475569' } },
+  // カレンダー
+  calTable: { width: '100%', borderCollapse: 'collapse' },
+  // 空き状況アイコン
+  availCircle: (type) => {
+    const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', fontSize: 13, fontWeight: 700, cursor: 'pointer' };
+    const t = { o: { background: '#d1fae5', color: '#065f46', border: '1.5px solid #059669' }, x: { background: '#fee2e2', color: '#991b1b', border: '1.5px solid #dc2626' }, dash: { background: '#f1f5f9', color: '#94a3b8', border: '1.5px solid #cbd5e1' } };
+    return { ...base, ...(t[type] || t.dash) };
+  },
+  note: { background: '#fef9c3', borderLeft: `4px solid ${C.warning}`, padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, color: '#78350f' },
+  noteInfo: { background: '#eff6ff', borderLeft: `4px solid ${C.primary}`, padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, color: C.primary },
+  noteSuccess: { background: '#f0fdf4', borderLeft: `4px solid ${C.success}`, padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, color: '#065f46' },
+};
 
-    if (savedStaffList) setStaffList(JSON.parse(savedStaffList));
-    if (savedBusinessHours) setBusinessHours(JSON.parse(savedBusinessHours));
-    if (savedOffDays) setStaffOffDays(JSON.parse(savedOffDays));
+// ============================================================
+// ページ定数
+// ============================================================
+const NAV = [
+  { key: 'cal',      label: '予約',     icon: '📅' },
+  { key: 'confirm',  label: '予約確認',  icon: '📋' },
+  { key: 'register', label: '登録',     icon: '👤' },
+  { key: 'inquiry',  label: '問い合わせ', icon: '💬' },
+  { key: 'logout',   label: 'ログアウト', icon: '🚪' },
+];
 
-    fetchBookings(selectedDate);
+// ============================================================
+// ログイン画面
+// ============================================================
+function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get('access_token');
-    if (accessToken) {
-      fetchLINEUserInfo(accessToken);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchBookings(selectedDate);
-    setAvailableTimes(generateTimeSlots());
-  }, [selectedDate, businessHours]);
-
-  // ========== 営業時間を生成 ==========
-  const generateTimeSlots = () => {
-    const slots = [];
-    const [startHour, startMin] = businessHours.startTime.split(':').map(Number);
-    const [endHour, endMin] = businessHours.endTime.split(':').map(Number);
-
-    let current = new Date();
-    current.setHours(startHour, startMin, 0);
-
-    const end = new Date();
-    end.setHours(endHour, endMin, 0);
-
-    while (current < end) {
-      const hours = String(current.getHours()).padStart(2, '0');
-      const minutes = String(current.getMinutes()).padStart(2, '0');
-      slots.push(`${hours}:${minutes}`);
-      current.setMinutes(current.getMinutes() + businessHours.interval);
-    }
-
-    return slots;
-  };
-
-  // ========== スタッフの利用可能判定 ==========
-  const isStaffAvailable = (staff) => {
-    if (!staffOffDays[staff]) return true;
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    return !staffOffDays[staff].includes(dateStr);
-  };
-
-  const getAvailableStaff = () => {
-    return staffList.filter(staff => isStaffAvailable(staff));
-  };
-
-  // ========== LINE Login ==========
-  const fetchLINEUserInfo = async (accessToken) => {
-    try {
-      const response = await fetch('https://api.line.me/v2/profile', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const data = await response.json();
-      setUserInfo({
-        name: data.displayName,
-        userId: data.userId,
-        pictureUrl: data.pictureUrl,
-      });
-      setFormData(prev => ({
-        ...prev,
-        customerName: data.displayName,
-        notificationMethod: 'line', // LINEログインした場合はLINEを推奨
-      }));
-    } catch (error) {
-      console.error('LINE認証エラー:', error);
+  const handleEmailLogin = async () => {
+    if (!email || !password) { setError('メールアドレスとパスワードを入力してください'); return; }
+    const res = await apiPost({ action: 'loginUser', email, password });
+    if (res.success) {
+      onEmailLogin(res.data);
+    } else {
+      setError(res.error?.message || 'ログインに失敗しました');
     }
   };
 
-  const initiateLineLogin = () => {
-    const lineLoginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={YOUR_LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(window.location.origin)}&state=12345&scope=profile`;
-    window.location.href = lineLoginUrl;
-  };
-
-  // ========== データ取得 ==========
-  const fetchBookings = async (date) => {
-    try {
-      const dateStr = date.toISOString().split('T')[0];
-      const response = await fetch(
-        `${BACKEND_URL}?action=getBookings&date=${dateStr}`
-      );
-      const data = await response.json();
-      if (data.success) {
-        setBookings(data.bookings || []);
-      }
-    } catch (error) {
-      console.error('予約データ取得エラー:', error);
-    }
-  };
-
-  // ========== 時間帯判定 ==========
-  const isBooked = (staff, time) => {
-    return bookings.some(
-      b => b.staff === staff && b.time === time && b.status !== 'cancelled'
-    );
-  };
-
-  const getBookingInfo = (staff, time) => {
-    return bookings.find(
-      b => b.staff === staff && b.time === time && b.status !== 'cancelled'
-    );
-  };
-
-  // ========== 予約確定 ==========
-  const handleBooking = async () => {
-    if (!selectedSlot || !formData.customerName || !formData.service) {
-      setMessage('必須項目を入力してください');
-      setMessageType('error');
-      return;
-    }
-
-    // 通知方法の検証
-    if (!formData.customerEmail && !userInfo?.userId && formData.notificationMethod !== 'line') {
-      setMessage('メール通知の場合、メールアドレスを入力してください');
-      setMessageType('error');
-      return;
-    }
-
-    if (!userInfo?.userId && formData.notificationMethod !== 'email') {
-      setMessage('LINE通知の場合、LINEでログインしてください');
-      setMessageType('error');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
-      const response = await fetch(BACKEND_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({
-          action: 'addBooking',
-          data: {
-            date: dateStr,
-            time: selectedSlot.time,
-            staff: selectedSlot.staff,
-            customerName: formData.customerName,
-            customerPhone: formData.customerPhone,
-            customerEmail: formData.customerEmail,
-            service: formData.service,
-            note: formData.note,
-            lineUserId: userInfo?.userId,
-            notificationMethod: formData.notificationMethod, // ← 通知方法を送信
-          },
-        }),
-      });
-
-      setMessageType('success');
-      setMessage('✓ 予約が確定しました！');
-      setShowModal(false);
-      setTimeout(() => {
-        setMessage('');
-        setSelectedSlot(null);
-        fetchBookings(selectedDate);
-      }, 2000);
-    } catch (error) {
-      setMessageType('error');
-      setMessage(`エラー: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ========== 日付操作 ==========
-  const addDays = (days) => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + days);
-    setSelectedDate(newDate);
-  };
-
-  const formatDate = (date) => {
-    return date.toLocaleDateString('ja-JP', {
-      month: 'short',
-      day: 'numeric',
-      weekday: 'short',
-    });
-  };
-
-  // ========== UI: ログインバナー ==========
-  if (!userInfo) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              💇‍♀️ サロン予約
-            </h1>
-            <p className="text-gray-600 text-sm">LINE で簡単ログイン</p>
-          </div>
-
-          <button
-            onClick={initiateLineLogin}
-            className="w-full bg-[#00B900] hover:bg-[#009900] text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 mb-4"
-          >
-            <svg width="24" height="24" viewBox="0 0 48 48" fill="currentColor">
-              <path d="M24 4C12.95 4 4 10.82 4 19c0 5 3.13 9.36 7.81 11.92.33 2.12 1.57 6.83 1.84 7.82.04.18.15.28.29.28.06 0 .13-.01.19-.04 1.15-.65 6.78-4.09 9.24-5.61 1.23.16 2.5.25 3.81.25 11.05 0 20-6.82 20-15.18C44 10.82 35.05 4 24 4zm-.5 22h-2v-7h2v7zm5-7h2v7h-2v-7zm5 3.5h-2v3.5h-2v-7h4v3.5z"/>
-            </svg>
-            LINE でログイン
+  return (
+    <div style={{ ...S.wrap, background: 'linear-gradient(160deg, #1a4f8a 0%, #0ea5e9 100%)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px' }}>
+        <div style={S.loginCard}>
+          <h2 style={{ fontSize: 18, color: C.primary, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>
+            🏥 ご予約
+          </h2>
+          {/* LINEログインボタン */}
+          <button style={S.lineBtn} onClick={onLineLogin}>
+            <span style={{ fontSize: 20 }}>💬</span> LINEでログイン
           </button>
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">または</span>
-            </div>
+          <div style={{ textAlign: 'center', color: C.muted, fontSize: 12, margin: '10px 0', position: 'relative' }}>
+            <span style={{ background: '#fff', padding: '0 8px', position: 'relative', zIndex: 1 }}>または</span>
+            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: C.border }} />
           </div>
+          {/* メールアドレスログイン */}
+          <input style={{ ...S.formInput, marginBottom: 8 }} type="email" placeholder="メールアドレス" value={email} onChange={e => setEmail(e.target.value)} />
+          <input style={{ ...S.formInput, marginBottom: 8 }} type="password" placeholder="パスワード" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleEmailLogin()} />
+          {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+          <button style={S.emailBtn} onClick={handleEmailLogin}>メールアドレスでログイン</button>
+          {/* ゲスト予約（ログインなし） */}
+          <button style={S.textBtn} onClick={onGuestBook}>ログインせずに予約する</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="お名前"
-              value={formData.customerName}
-              onChange={(e) => setFormData({...formData, customerName: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
-            />
-            <input
-              type="email"
-              placeholder="メールアドレス"
-              value={formData.customerEmail}
-              onChange={(e) => setFormData({...formData, customerEmail: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
-            />
-            <button
-              onClick={() => {
-                if (formData.customerName) {
-                  setUserInfo({ name: formData.customerName });
-                }
-              }}
-              className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold py-3 rounded-lg hover:shadow-lg transition-all"
-            >
-              ゲストで続行
-            </button>
+// ============================================================
+// 月カレンダー画面（空き確認）
+// ============================================================
+function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, staffList }) {
+  const year  = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const pad = n => String(n).padStart(2, '0');
+  const [selectedStaffId, setSelectedStaffId] = useState('all');
+  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // 日付の空き状況を判定する
+  const getDayStatus = (d) => {
+    if (!d) return null;
+    const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+    const dayData = availability[dateStr];
+    if (dayData === null) return 'closed';    // 定休日
+    if (!dayData) return 'unknown';
+    const staffKeys = selectedStaffId === 'all' ? Object.keys(dayData) : [selectedStaffId];
+    const totalSlots = staffKeys.reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
+    return totalSlots > 0 ? 'available' : 'full';
+  };
+
+  const weeks = [];
+  let day = 1 - firstDay;
+  while (day <= daysInMonth) {
+    const week = [];
+    for (let i = 0; i < 7; i++, day++) {
+      week.push(day > 0 && day <= daysInMonth ? day : null);
+    }
+    weeks.push(week);
+  }
+
+  return (
+    <div>
+      {/* 施術者フィルタ */}
+      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 0', marginBottom: 10 }}>
+        <button style={{ padding: '5px 12px', borderRadius: 20, border: `1.5px solid ${selectedStaffId === 'all' ? C.primary : C.border}`, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', background: selectedStaffId === 'all' ? C.primary : C.surface, color: selectedStaffId === 'all' ? '#fff' : C.text }}
+          onClick={() => setSelectedStaffId('all')}>全員</button>
+        {staffList.map(s => (
+          <button key={s.staffId} style={{ padding: '5px 12px', borderRadius: 20, border: `1.5px solid ${selectedStaffId === s.staffId ? C.primary : C.border}`, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', background: selectedStaffId === s.staffId ? C.primary : C.surface, color: selectedStaffId === s.staffId ? '#fff' : C.text }}
+            onClick={() => setSelectedStaffId(s.staffId)}>{s.name}</button>
+        ))}
+      </div>
+
+      {/* 月ナビ */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
+          onClick={() => onChangeDate(new Date(year, month - 1, 1))}>≪</button>
+        <span style={{ fontWeight: 700, flex: 1, textAlign: 'center' }}>{year}年{month + 1}月</span>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
+          onClick={() => onChangeDate(new Date(year, month + 1, 1))}>≫</button>
+      </div>
+
+      {/* カレンダー */}
+      <table style={S.calTable}>
+        <thead>
+          <tr>
+            {DAY_NAMES.map((d, i) => (
+              <th key={d} style={{ background: i === 0 ? '#b91c1c' : i === 6 ? '#1d4ed8' : C.primary, color: '#fff', padding: '6px 2px', textAlign: 'center', fontSize: 11, fontWeight: 500, border: `1px solid ${C.border}` }}>{d}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((week, wi) => (
+            <tr key={wi}>
+              {week.map((d, di) => {
+                const status = getDayStatus(d);
+                const isHoliday = di === 0;
+                return (
+                  <td key={di} style={{ border: `1px solid ${C.border}`, padding: '4px 2px', textAlign: 'center', verticalAlign: 'middle', background: isHoliday ? '#fef2f2' : di === 6 ? '#eff6ff' : C.surface }}>
+                    {d && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                        <span style={{ fontSize: 11, color: isHoliday ? '#b91c1c' : di === 6 ? '#1d4ed8' : C.muted, fontWeight: 700 }}>{d}</span>
+                        {status === 'available' && (
+                          <span style={S.availCircle('o')} onClick={() => onSelectDay(new Date(year, month, d))}>○</span>
+                        )}
+                        {status === 'full' && <span style={S.availCircle('x')}>×</span>}
+                        {status === 'closed' && <span style={S.availCircle('dash')}>—</span>}
+                        {status === 'unknown' && <span style={{ fontSize: 9, color: C.muted }}>—</span>}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={S.noteInfo}>○ = 空きあり　× = 満員　— = 定休日</div>
+    </div>
+  );
+}
+
+// ============================================================
+// 日ビュー画面（時間帯選択）
+// ============================================================
+function CalDayScreen({ availability, currentDate, staffList, menuList, onSelectSlot, onBack }) {
+  const pad = n => String(n).padStart(2, '0');
+  const dateStr = `${currentDate.getFullYear()}-${pad(currentDate.getMonth() + 1)}-${pad(currentDate.getDate())}`;
+  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+  const dayData = availability[dateStr] || {};
+
+  // 全施術者の空き時間を集約する
+  const allSlots = {};
+  staffList.forEach(s => {
+    (dayData[s.staffId] || []).forEach(slot => {
+      if (!allSlots[slot]) allSlots[slot] = [];
+      allSlots[slot].push(s);
+    });
+  });
+  const sortedSlots = Object.keys(allSlots).sort();
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }} onClick={onBack}>≪ 戻る</button>
+        <span style={{ fontWeight: 700 }}>
+          {currentDate.getMonth() + 1}月{currentDate.getDate()}日（{DAY_NAMES[currentDate.getDay()]}）の空き時間
+        </span>
+      </div>
+
+      {sortedSlots.length === 0 ? (
+        <div style={S.noteInfo}>この日は空きがありません</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {sortedSlots.map(slot => (
+            <div key={slot} style={S.card}>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{slot}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {allSlots[slot].map(s => (
+                  <button key={s.staffId} style={{ ...S.btn('primary'), gap: 6 }} onClick={() => onSelectSlot(dateStr, slot, s.staffId)}>
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 予約入力フォーム
+// ============================================================
+function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onBack, onComplete }) {
+  const staff = staffList.find(s => s.staffId === staffId);
+  const [form, setForm] = useState({
+    menuId: menuList[0]?.menuId || '',
+    userName: user?.name || '',
+    userPhone: user?.phone || '',
+    userEmail: user?.email || '',
+    note: '',
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+
+  const handleSubmit = async () => {
+    if (!form.menuId || !form.userName) { setError('コースとお名前は必須です'); return; }
+    setLoading(true);
+    const res = await apiPost({
+      action: 'createBooking',
+      datetime: `${date} ${slot}`,
+      staffId,
+      menuId: form.menuId,
+      userName: form.userName,
+      userPhone: form.userPhone,
+      userEmail: form.userEmail,
+      lineUserId: user?.lineUserId || '',
+      note: form.note,
+    });
+    if (res.success) {
+      onComplete(res.data.bookingId);
+    } else {
+      setError(res.error?.message || '予約の登録に失敗しました');
+    }
+    setLoading(false);
+  };
+
+  const staffMenuIds = (staff?.menus || '').split(',').map(m => m.trim());
+  const availMenus = menuList.filter(m => staffMenuIds.includes(m.menuId));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }} onClick={onBack}>≪ 戻る</button>
+        <span style={{ fontWeight: 700 }}>予約内容の入力</span>
+      </div>
+
+      <div style={{ ...S.noteInfo, marginBottom: 12 }}>
+        📅 {date} {slot} ／ 担当：{staff?.name || staffId}
+      </div>
+
+      {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+
+      <table style={S.formTbl}>
+        <tbody>
+          <tr>
+            <th style={S.formTh}>コース<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
+            <td style={S.formTd}>
+              <select style={S.formInput} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
+                {(availMenus.length > 0 ? availMenus : menuList).map(m => (
+                  <option key={m.menuId} value={m.menuId}>{m.name}（{m.durationMin}分）</option>
+                ))}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <th style={S.formTh}>お名前<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
+            <td style={S.formTd}>
+              <input style={S.formInput} type="text" placeholder="山田太郎" value={form.userName} onChange={e => set('userName', e.target.value)} />
+              {user && <span style={{ color: C.muted, fontSize: 11.5, fontStyle: 'italic', display: 'block', marginTop: 3 }}>登録情報から自動入力</span>}
+            </td>
+          </tr>
+          <tr>
+            <th style={S.formTh}>電話番号</th>
+            <td style={S.formTd}><input style={S.formInput} type="tel" placeholder="09012345678" value={form.userPhone} onChange={e => set('userPhone', e.target.value)} /></td>
+          </tr>
+          <tr>
+            <th style={S.formTh}>E-Mail</th>
+            <td style={S.formTd}><input style={S.formInput} type="email" placeholder="yamada@example.com" value={form.userEmail} onChange={e => set('userEmail', e.target.value)} /></td>
+          </tr>
+          <tr>
+            <th style={S.formTh}>要望・備考</th>
+            <td style={S.formTd}><textarea style={{ ...S.formInput, height: 60 }} placeholder="気になる症状など" value={form.note} onChange={e => set('note', e.target.value)} /></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style={S.btnRow}>
+        <button style={S.btn('gray')} onClick={onBack}>キャンセル</button>
+        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={handleSubmit}>
+          {loading ? '送信中...' : '予約を確定する'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 予約完了画面
+// ============================================================
+function BookingCompleteScreen({ bookingId, onBack }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+      <h3 style={{ fontSize: 18, fontWeight: 700, color: C.primary, marginBottom: 12 }}>ご予約が完了しました</h3>
+      <p style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>予約IDをお控えください</p>
+      <div style={{ background: C.primaryPale, color: C.primary, borderRadius: 8, padding: '12px 20px', fontWeight: 700, fontSize: 14, marginBottom: 20 }}>
+        {bookingId}
+      </div>
+      <div style={S.noteInfo}>確認メール・LINE通知をお送りしました。</div>
+      <div style={S.btnRow}>
+        <button style={{ ...S.btn('outline'), margin: '12px auto 0' }} onClick={onBack}>予約カレンダーに戻る</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 予約確認画面（マイページ）
+// ============================================================
+function BookingConfirmScreen({ user, onCancel }) {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (!user?.userId) { setLoading(false); return; }
+      const res = await apiGet({ action: 'getUserBookings', userId: user.userId });
+      if (res.success) setBookings(res.data.bookings);
+      setLoading(false);
+    };
+    fetchBookings();
+  }, [user]);
+
+  if (loading) return <p>読み込み中...</p>;
+  if (!user) return <div style={S.noteInfo}>ログインしてご自身の予約を確認できます。</div>;
+
+  return (
+    <div>
+      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>📋 ご予約一覧</h3>
+      {bookings.length === 0 ? (
+        <div style={S.noteInfo}>現在ご予約はありません</div>
+      ) : bookings.map(b => (
+        <div key={b.bookingId} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setSelectedBooking(b)}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{b.datetime}</div>
+          <div style={{ color: C.muted, fontSize: 12 }}>{b.menuId} ／ {b.staffId}</div>
+          <div style={{ marginTop: 4 }}>
+            <span style={{ ...S.badge.green, display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...S.badge.green }}>{b.status}</span>
           </div>
         </div>
+      ))}
+
+      {/* 予約詳細モーダル */}
+      {selectedBooking && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'flex-end', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px', width: '100%', maxWidth: 480, margin: '0 auto' }}>
+            <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>予約詳細</h3>
+            <table style={S.formTbl}>
+              <tbody>
+                <tr><th style={S.formTh}>日時</th><td style={S.formTd}>{selectedBooking.datetime}</td></tr>
+                <tr><th style={S.formTh}>担当</th><td style={S.formTd}>{selectedBooking.staffId}</td></tr>
+                <tr><th style={S.formTh}>コース</th><td style={S.formTd}>{selectedBooking.menuId}</td></tr>
+                <tr><th style={S.formTh}>要望・備考</th><td style={S.formTd}>{selectedBooking.note || '—'}</td></tr>
+              </tbody>
+            </table>
+            <div style={S.btnRow}>
+              <button style={S.btn('danger')} onClick={async () => {
+                if (!window.confirm('この予約をキャンセルしますか？')) return;
+                await onCancel(selectedBooking.bookingId);
+                setSelectedBooking(null);
+                setBookings(prev => prev.filter(b => b.bookingId !== selectedBooking.bookingId));
+              }}>予約取り消し</button>
+              <button style={S.btn('gray')} onClick={() => setSelectedBooking(null)}>キャンセル</button>
+              <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={() => setSelectedBooking(null)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 利用者登録画面
+// ============================================================
+function RegisterScreen({ onRegister }) {
+  const [form, setForm] = useState({ name: '', nameKana: '', birthdate: '', phone: '', email: '', password: '', passwordConfirm: '', lineUserId: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+
+  const handleRegister = async () => {
+    if (!form.name || !form.nameKana || !form.email || !form.password) {
+      setError('必須項目を入力してください');
+      return;
+    }
+    if (form.password !== form.passwordConfirm) {
+      setError('パスワードが一致しません');
+      return;
+    }
+    if (form.password.length < 8) {
+      setError('パスワードは8文字以上で入力してください');
+      return;
+    }
+    setLoading(true);
+    const res = await apiPost({ action: 'registerUser', ...form });
+    if (res.success) {
+      onRegister(res.data);
+    } else {
+      setError(res.error?.message || '登録に失敗しました');
+    }
+    setLoading(false);
+  };
+
+  const R = <span style={{ color: C.danger, fontSize: 11 }}>*</span>;
+
+  return (
+    <div>
+      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>利用者登録</h3>
+      {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+      <table style={S.formTbl}>
+        <tbody>
+          <tr><th style={S.formTh}>氏名{R}</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="山田太郎" value={form.name} onChange={e => set('name', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>ふりがな{R}</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="やまだたろう" value={form.nameKana} onChange={e => set('nameKana', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>生年月日</th><td style={S.formTd}><input style={S.formInput} type="date" value={form.birthdate} onChange={e => set('birthdate', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>電話番号</th><td style={S.formTd}><input style={S.formInput} type="tel" placeholder="09012345678" value={form.phone} onChange={e => set('phone', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>E-Mail{R}</th><td style={S.formTd}><input style={S.formInput} type="email" placeholder="yamada@example.com" value={form.email} onChange={e => set('email', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>パスワード{R}</th><td style={S.formTd}><input style={S.formInput} type="password" placeholder="8文字以上" value={form.password} onChange={e => set('password', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>パスワード（確認）{R}</th><td style={S.formTd}><input style={S.formInput} type="password" placeholder="もう一度入力" value={form.passwordConfirm} onChange={e => set('passwordConfirm', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>LINE ID</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="LINE連携する場合は入力" value={form.lineUserId} onChange={e => set('lineUserId', e.target.value)} /></td></tr>
+        </tbody>
+      </table>
+      <div style={S.btnRow}>
+        <button style={S.btn('gray')} onClick={() => setForm({ name: '', nameKana: '', birthdate: '', phone: '', email: '', password: '', passwordConfirm: '', lineUserId: '' })}>キャンセル</button>
+        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={handleRegister}>{loading ? '登録中...' : '登録する'}</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 問い合わせ画面
+// ============================================================
+function InquiryScreen() {
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const handleSend = () => {
+    // 問い合わせ送信処理（実際はGAS経由でメール送信）
+    setSent(true);
+  };
+
+  if (sent) {
+    return (
+      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📨</div>
+        <p style={{ fontWeight: 700, color: C.primary }}>送信しました</p>
+        <p style={{ color: C.muted, fontSize: 12 }}>担当者よりご連絡いたします</p>
       </div>
     );
   }
 
-  // ========== UI: メイン予約画面 ==========
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50">
+    <div>
+      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>問い合わせ</h3>
+      <div style={S.card}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.primary, marginBottom: 6 }}>📞 お電話</div>
+        <p style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>〇〇〇-〇〇〇-〇〇〇〇</p>
+      </div>
+      <table style={S.formTbl}>
+        <tbody>
+          <tr><th style={S.formTh}>件名</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="お問い合わせ件名" value={subject} onChange={e => setSubject(e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>内容</th><td style={S.formTd}><textarea style={{ ...S.formInput, height: 100 }} placeholder="内容を入力してください" value={body} onChange={e => setBody(e.target.value)} /></td></tr>
+        </tbody>
+      </table>
+      <div style={S.note}>送信先：店舗アカウントのE-Mailへ送信されます</div>
+      <div style={S.btnRow}>
+        <button style={S.btn('gray')}>キャンセル</button>
+        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={handleSend}>送信</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// メインコンポーネント
+// ============================================================
+export default function BookingCalendar() {
+  const [page, setPage]           = useState('login');  // login | cal | calDay | form | complete | confirm | register | inquiry
+  const [user, setUser]           = useState(null);
+  const [availability, setAvail]  = useState({});
+  const [staffList, setStaffList] = useState([]);
+  const [menuList, setMenuList]   = useState([]);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [selectedStaffId, setSelectedStaffId] = useState(null);
+  const [completedBookingId, setCompletedBookingId] = useState(null);
+  const [navPage, setNavPage] = useState('cal');
+
+  // 初期データ取得
+  useEffect(() => {
+    Promise.all([
+      apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
+      apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
+    ]);
+  }, []);
+
+  // 空き状況取得
+  const fetchAvailability = useCallback(async (date) => {
+    const d = date || currentDate;
+    const res = await apiGet({ action: 'getAvailability', year: d.getFullYear(), month: d.getMonth() + 1 });
+    if (res.success) setAvail(res.data.availability);
+  }, [currentDate]);
+
+  useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
+
+  // ログイン処理
+  const handleLogin = (userData) => { setUser(userData); setPage('cal'); setNavPage('cal'); };
+  const handleGuestBook = () => { setPage('cal'); setNavPage('cal'); };
+  const handleLogout = () => { setUser(null); setPage('login'); };
+
+  // ナビゲーション
+  const handleNav = (key) => {
+    if (key === 'logout') { handleLogout(); return; }
+    setNavPage(key);
+    if (key === 'cal') setPage('cal');
+    else if (key === 'confirm') setPage('confirm');
+    else if (key === 'register') setPage('register');
+    else if (key === 'inquiry') setPage('inquiry');
+  };
+
+  // ページタイトル取得
+  const getTitle = () => {
+    const titles = { cal: '予約', calDay: '日程選択', form: '予約入力', complete: '予約完了', confirm: '予約確認', register: '利用者登録', inquiry: '問い合わせ' };
+    return titles[page] || '予約システム';
+  };
+
+  // ログイン画面はナビなし
+  if (page === 'login') {
+    return <LoginScreen onLineLogin={() => {}} onEmailLogin={handleLogin} onGuestBook={handleGuestBook} />;
+  }
+
+  return (
+    <div style={S.wrap}>
       {/* ヘッダー */}
-      <div className="sticky top-0 z-30 bg-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              {userInfo?.pictureUrl && (
-                <img 
-                  src={userInfo.pictureUrl} 
-                  alt={userInfo.name}
-                  className="w-10 h-10 rounded-full"
-                />
-              )}
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">💇 サロン予約</h1>
-                <p className="text-xs text-gray-600">ログイン中: {userInfo.name}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* 日付ナビゲーション */}
-          <div className="flex items-center justify-between gap-4">
-            <button
-              onClick={() => addDays(-1)}
-              className="p-2 hover:bg-pink-100 rounded-lg transition"
-            >
-              <ChevronLeft size={20} />
-            </button>
-
-            <div className="text-center flex-1">
-              <p className="text-xl font-bold text-gray-900">
-                {formatDate(selectedDate)}
-              </p>
-              {getAvailableStaff().length === 0 && (
-                <p className="text-sm text-red-600 mt-1">⚠️ この日は全スタッフが休みです</p>
-              )}
-            </div>
-
-            <button
-              onClick={() => addDays(1)}
-              className="p-2 hover:bg-pink-100 rounded-lg transition"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
+      <div style={S.header}>
+        {page !== 'cal' && <button style={S.backBtn} onClick={() => setPage('cal')}>‹</button>}
+        <h3 style={S.headerTitle}>{getTitle()}</h3>
+        {user && <span style={{ fontSize: 11, opacity: 0.8 }}>{user.name} 様</span>}
       </div>
 
-      {/* メッセージ表示 */}
-      {message && (
-        <div className={`mx-4 mt-4 p-4 rounded-lg text-center ${
-          messageType === 'success'
-            ? 'bg-green-100 text-green-800'
-            : 'bg-red-100 text-red-800'
-        }`}>
-          {message}
-        </div>
-      )}
-
-      {/* カレンダー表 */}
-      <div className="max-w-7xl mx-auto p-4">
-        {getAvailableStaff().length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <p className="text-gray-500 text-lg mb-4">
-              申し訳ございません。この日は全スタッフが休みです。
-            </p>
-            <p className="text-gray-500 text-sm">別の日付をお選びください。</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-lg overflow-x-auto">
-            <table className="w-full text-sm md:text-base">
-              <thead>
-                <tr className="bg-gradient-to-r from-pink-100 to-purple-100 border-b-2 border-pink-300">
-                  <th className="px-3 py-4 font-bold text-gray-900 text-left sticky left-0 bg-gradient-to-r from-pink-100 to-purple-100 w-20 md:w-24">
-                    時間
-                  </th>
-                  {getAvailableStaff().map(staff => (
-                    <th
-                      key={staff}
-                      className="px-2 md:px-4 py-4 font-bold text-gray-900 text-center min-w-[120px] md:min-w-[150px]"
-                    >
-                      {staff}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-
-              <tbody>
-                {availableTimes.map((time, idx) => (
-                  <tr
-                    key={time}
-                    className={`border-b ${idx % 2 === 0 ? 'bg-white' : 'bg-pink-50'}`}
-                  >
-                    <td className="px-3 py-4 font-semibold text-gray-700 sticky left-0 bg-inherit z-10">
-                      {time}
-                    </td>
-
-                    {getAvailableStaff().map(staff => {
-                      const booked = isBooked(staff, time);
-                      const bookingInfo = getBookingInfo(staff, time);
-
-                      return (
-                        <td
-                          key={`${staff}-${time}`}
-                          className="px-2 md:px-4 py-4 text-center"
-                        >
-                          <button
-                            onClick={() => {
-                              if (!booked) {
-                                setSelectedSlot({ staff, time });
-                                setShowModal(true);
-                              }
-                            }}
-                            disabled={booked}
-                            className={`w-full py-3 px-2 rounded-lg font-semibold transition-all text-xs md:text-sm ${
-                              booked
-                                ? 'bg-red-200 text-red-800 cursor-not-allowed opacity-60'
-                                : 'bg-gradient-to-br from-pink-400 to-purple-400 text-white hover:shadow-lg hover:scale-105'
-                            }`}
-                          >
-                            {booked ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <X size={14} />
-                                <span className="hidden md:inline">予約済</span>
-                              </div>
-                            ) : (
-                              '予約可'
-                            )}
-                          </button>
-                          {booked && bookingInfo && (
-                            <p className="text-xs text-gray-500 mt-1 truncate">
-                              {bookingInfo.customerName}
-                            </p>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* コンテンツ */}
+      <div style={S.body}>
+        {page === 'cal' && (
+          <CalMonthScreen
+            availability={availability}
+            currentDate={currentDate}
+            staffList={staffList}
+            onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
+            onSelectDay={d => { setSelectedDate(d); setPage('calDay'); }}
+          />
         )}
+        {page === 'calDay' && selectedDate && (
+          <CalDayScreen
+            availability={availability}
+            currentDate={selectedDate}
+            staffList={staffList}
+            menuList={menuList}
+            onSelectSlot={(date, slot, staffId) => {
+              setSelectedSlot(slot);
+              setSelectedStaffId(staffId);
+              setPage('form');
+            }}
+            onBack={() => setPage('cal')}
+          />
+        )}
+        {page === 'form' && (
+          <BookingFormScreen
+            date={selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}` : ''}
+            slot={selectedSlot}
+            staffId={selectedStaffId}
+            staffList={staffList}
+            menuList={menuList}
+            user={user}
+            onBack={() => setPage('calDay')}
+            onComplete={id => { setCompletedBookingId(id); setPage('complete'); }}
+          />
+        )}
+        {page === 'complete' && (
+          <BookingCompleteScreen bookingId={completedBookingId} onBack={() => { setPage('cal'); setNavPage('cal'); }} />
+        )}
+        {page === 'confirm' && (
+          <BookingConfirmScreen
+            user={user}
+            onCancel={async (id) => {
+              await apiPost({ action: 'cancelBooking', bookingId: id });
+            }}
+          />
+        )}
+        {page === 'register' && (
+          <RegisterScreen onRegister={userData => { setUser(userData); setPage('cal'); setNavPage('cal'); }} />
+        )}
+        {page === 'inquiry' && <InquiryScreen />}
       </div>
 
-      {/* 予約モーダル */}
-      {showModal && selectedSlot && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6 text-gray-900">
-              予約確定
-            </h2>
-
-            <div className="space-y-4 mb-6">
-              <div className="bg-pink-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">日時</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {formatDate(selectedDate)} {selectedSlot.time}
-                </p>
-              </div>
-
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">スタイリスト</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {selectedSlot.staff}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  メニュー <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.service}
-                  onChange={(e) => setFormData({...formData, service: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
-                >
-                  <option value="">選択してください</option>
-                  {serviceList.map(service => (
-                    <option key={service} value={service}>{service}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  電話番号
-                </label>
-                <input
-                  type="tel"
-                  value={formData.customerPhone}
-                  onChange={(e) => setFormData({...formData, customerPhone: e.target.value})}
-                  placeholder="09012345678"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  ご要望・備考
-                </label>
-                <textarea
-                  value={formData.note}
-                  onChange={(e) => setFormData({...formData, note: e.target.value})}
-                  placeholder="特別なリクエストがあればお書きください"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 h-20 resize-none"
-                />
-              </div>
-
-              {/* 通知方法選択 */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  📬 リマインド・通知方法 <span className="text-red-500">*</span>
-                </label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-3 p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-pink-50" 
-                         onClick={() => setFormData({...formData, notificationMethod: 'email'})}>
-                    <input
-                      type="radio"
-                      name="notification"
-                      value="email"
-                      checked={formData.notificationMethod === 'email'}
-                      onChange={() => setFormData({...formData, notificationMethod: 'email'})}
-                      className="w-4 h-4"
-                    />
-                    <Mail size={18} className="text-blue-500" />
-                    <div>
-                      <p className="font-semibold text-gray-900">メール</p>
-                      <p className="text-xs text-gray-600">リマインド・キャンセル通知をメールで受け取ります</p>
-                    </div>
-                  </label>
-
-                  {userInfo?.userId && (
-                    <>
-                      <label className="flex items-center gap-3 p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-green-50"
-                             onClick={() => setFormData({...formData, notificationMethod: 'line'})}>
-                        <input
-                          type="radio"
-                          name="notification"
-                          value="line"
-                          checked={formData.notificationMethod === 'line'}
-                          onChange={() => setFormData({...formData, notificationMethod: 'line'})}
-                          className="w-4 h-4"
-                        />
-                        <svg width="18" height="18" viewBox="0 0 48 48" fill="#00B900">
-                          <path d="M24 4C12.95 4 4 10.82 4 19c0 5 3.13 9.36 7.81 11.92.33 2.12 1.57 6.83 1.84 7.82.04.18.15.28.29.28.06 0 .13-.01.19-.04 1.15-.65 6.78-4.09 9.24-5.61 1.23.16 2.5.25 3.81.25 11.05 0 20-6.82 20-15.18C44 10.82 35.05 4 24 4z"/>
-                        </svg>
-                        <div>
-                          <p className="font-semibold text-gray-900">LINE</p>
-                          <p className="text-xs text-gray-600">リマインド・キャンセル通知をLINEで受け取ります</p>
-                        </div>
-                      </label>
-
-                      <label className="flex items-center gap-3 p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-purple-50"
-                             onClick={() => setFormData({...formData, notificationMethod: 'both'})}>
-                        <input
-                          type="radio"
-                          name="notification"
-                          value="both"
-                          checked={formData.notificationMethod === 'both'}
-                          onChange={() => setFormData({...formData, notificationMethod: 'both'})}
-                          className="w-4 h-4"
-                        />
-                        <Mail size={18} className="text-blue-500" />
-                        <svg width="18" height="18" viewBox="0 0 48 48" fill="#00B900">
-                          <path d="M24 4C12.95 4 4 10.82 4 19c0 5 3.13 9.36 7.81 11.92.33 2.12 1.57 6.83 1.84 7.82.04.18.15.28.29.28.06 0 .13-.01.19-.04 1.15-.65 6.78-4.09 9.24-5.61 1.23.16 2.5.25 3.81.25 11.05 0 20-6.82 20-15.18C44 10.82 35.05 4 24 4z"/>
-                        </svg>
-                        <div>
-                          <p className="font-semibold text-gray-900">メール＆LINE</p>
-                          <p className="text-xs text-gray-600">両方で通知を受け取ります</p>
-                        </div>
-                      </label>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 px-6 py-3 bg-gray-200 text-gray-900 rounded-lg font-semibold hover:bg-gray-300"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleBooking}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg font-semibold hover:shadow-lg disabled:opacity-50"
-              >
-                {loading ? '予約中...' : '予約を確定'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* フッター */}
-      <div className="border-t mt-12 bg-gray-50 py-8">
-        <div className="max-w-7xl mx-auto px-4 text-center text-gray-600 text-sm">
-          <p className="mb-4">ご不明な点がございましたら、お気軽にお問い合わせください</p>
-          <div className="flex justify-center gap-6">
-            <a href="tel:09012345678" className="flex items-center gap-1 hover:text-pink-500">
-              <Phone size={16} /> 090-1234-5678
-            </a>
-            <a href="mailto:salon@example.com" className="flex items-center gap-1 hover:text-pink-500">
-              <Mail size={16} /> salon@example.com
-            </a>
-          </div>
-        </div>
-      </div>
+      {/* ボトムナビ */}
+      <nav style={S.nav}>
+        {NAV.map(item => (
+          <a key={item.key} style={S.navLink(navPage === item.key)} onClick={() => handleNav(item.key)}>
+            <span style={S.navIcon}>{item.icon}</span>
+            {item.label}
+          </a>
+        ))}
+      </nav>
     </div>
   );
 }
