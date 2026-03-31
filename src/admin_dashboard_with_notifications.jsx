@@ -374,10 +374,14 @@ function BookingCalendarDay({ bookings, staffList, currentDate, onChangeDate, on
     slots.push(`${pad(h)}:30`);
   }
 
-  // 予約データを日時・施術者でマッピング
+  // 予約データを日時・施術者でマッピング（時刻を必ず HH:mm 形式に正規化）
   const bookingMap = {};
   bookings.forEach(b => {
-    const time = b.datetime?.split(' ')[1]?.substring(0, 5);
+    const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
+    // "9:30" → "09:30" に正規化
+    const time = rawTime.includes(':') && rawTime.indexOf(':') < 2
+      ? rawTime.padStart(5, '0')
+      : rawTime;
     const key = `${time}__${b.staffId}`;
     bookingMap[key] = b;
   });
