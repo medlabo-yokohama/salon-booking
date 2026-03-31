@@ -416,9 +416,23 @@ function BookingCompleteScreen({ bookingId, onBack }) {
 }
 
 // ============================================================
+// 日時を「YYYY-MM-DD HH:mm」形式に変換するヘルパー
+// ============================================================
+function formatDatetime(raw) {
+  if (!raw) return '—';
+  // すでに「2026-03-09 09:30」形式ならそのまま返す
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(raw))) return String(raw).substring(0, 16);
+  // Date型や英語形式の文字列を変換する
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return String(raw);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ============================================================
 // 予約確認画面（マイページ）
 // ============================================================
-function BookingConfirmScreen({ user, onCancel }) {
+function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -433,6 +447,18 @@ function BookingConfirmScreen({ user, onCancel }) {
     fetchBookings();
   }, [user]);
 
+  // staffIdから表示名を取得する
+  const getStaffName = (staffId) => {
+    const s = (staffList || []).find(s => s.staffId === staffId);
+    return s ? s.name : staffId;
+  };
+
+  // menuIdからメニュー名を取得する
+  const getMenuName = (menuId) => {
+    const m = (menuList || []).find(m => m.menuId === menuId);
+    return m ? m.name : menuId;
+  };
+
   if (loading) return <p>読み込み中...</p>;
   if (!user) return <div style={S.noteInfo}>ログインしてご自身の予約を確認できます。</div>;
 
@@ -443,8 +469,8 @@ function BookingConfirmScreen({ user, onCancel }) {
         <div style={S.noteInfo}>現在ご予約はありません</div>
       ) : bookings.map(b => (
         <div key={b.bookingId} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setSelectedBooking(b)}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{b.datetime}</div>
-          <div style={{ color: C.muted, fontSize: 12 }}>{b.menuId} ／ {b.staffId}</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{formatDatetime(b.datetime)}</div>
+          <div style={{ color: C.muted, fontSize: 12 }}>{getMenuName(b.menuId)} ／ {getStaffName(b.staffId)}</div>
           <div style={{ marginTop: 4 }}>
             <span style={{ ...S.badge.green, display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...S.badge.green }}>{b.status}</span>
           </div>
@@ -458,9 +484,9 @@ function BookingConfirmScreen({ user, onCancel }) {
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>予約詳細</h3>
             <table style={S.formTbl}>
               <tbody>
-                <tr><th style={S.formTh}>日時</th><td style={S.formTd}>{selectedBooking.datetime}</td></tr>
-                <tr><th style={S.formTh}>担当</th><td style={S.formTd}>{selectedBooking.staffId}</td></tr>
-                <tr><th style={S.formTh}>コース</th><td style={S.formTd}>{selectedBooking.menuId}</td></tr>
+                <tr><th style={S.formTh}>日時</th><td style={S.formTd}>{formatDatetime(selectedBooking.datetime)}</td></tr>
+                <tr><th style={S.formTh}>担当</th><td style={S.formTd}>{getStaffName(selectedBooking.staffId)}</td></tr>
+                <tr><th style={S.formTh}>コース</th><td style={S.formTd}>{getMenuName(selectedBooking.menuId)}</td></tr>
                 <tr><th style={S.formTh}>要望・備考</th><td style={S.formTd}>{selectedBooking.note || '—'}</td></tr>
               </tbody>
             </table>
@@ -757,6 +783,8 @@ export default function BookingCalendar() {
         {page === 'confirm' && (
           <BookingConfirmScreen
             user={user}
+            staffList={staffList}
+            menuList={menuList}
             onCancel={async (id) => {
               await apiPost({ action: 'cancelBooking', bookingId: id });
             }}
