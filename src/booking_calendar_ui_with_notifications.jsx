@@ -83,21 +83,24 @@ const NAV = [
 ];
 
 // ============================================================
-// ログイン画面
+// ログイン画面（新規登録リンク付き）
 // ============================================================
-function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook }) {
+function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook, onGoRegister }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleEmailLogin = async () => {
     if (!email || !password) { setError('メールアドレスとパスワードを入力してください'); return; }
+    setLoading(true);
     const res = await apiPost({ action: 'loginUser', email, password });
     if (res.success) {
       onEmailLogin(res.data);
     } else {
-      setError(res.error?.message || 'ログインに失敗しました');
+      setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません');
     }
+    setLoading(false);
   };
 
   return (
@@ -107,19 +110,39 @@ function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook }) {
           <h2 style={{ fontSize: 18, color: C.primary, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>
             🏥 ご予約
           </h2>
+
           {/* LINEログインボタン */}
           <button style={S.lineBtn} onClick={onLineLogin}>
             <span style={{ fontSize: 20 }}>💬</span> LINEでログイン
           </button>
+
           <div style={{ textAlign: 'center', color: C.muted, fontSize: 12, margin: '10px 0', position: 'relative' }}>
             <span style={{ background: '#fff', padding: '0 8px', position: 'relative', zIndex: 1 }}>または</span>
             <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: C.border }} />
           </div>
+
           {/* メールアドレスログイン */}
-          <input style={{ ...S.formInput, marginBottom: 8 }} type="email" placeholder="メールアドレス" value={email} onChange={e => setEmail(e.target.value)} />
-          <input style={{ ...S.formInput, marginBottom: 8 }} type="password" placeholder="パスワード" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleEmailLogin()} />
+          <input style={{ ...S.formInput, marginBottom: 8 }} type="email" placeholder="メールアドレス"
+            value={email} onChange={e => setEmail(e.target.value)} />
+          <input style={{ ...S.formInput, marginBottom: 8 }} type="password" placeholder="パスワード"
+            value={password} onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleEmailLogin()} />
+
           {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-          <button style={S.emailBtn} onClick={handleEmailLogin}>メールアドレスでログイン</button>
+
+          <button style={S.emailBtn} onClick={handleEmailLogin}>
+            {loading ? 'ログイン中...' : 'メールアドレスでログイン'}
+          </button>
+
+          {/* 新規登録リンク */}
+          <div style={{ textAlign: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: C.muted }}>アカウントをお持ちでない方は </span>
+            <button style={{ background: 'none', border: 'none', color: C.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+              onClick={onGoRegister}>
+              新規登録
+            </button>
+          </div>
+
           {/* ゲスト予約（ログインなし） */}
           <button style={S.textBtn} onClick={onGuestBook}>ログインせずに予約する</button>
         </div>
@@ -459,32 +482,41 @@ function BookingConfirmScreen({ user, onCancel }) {
 }
 
 // ============================================================
-// 利用者登録画面
+// 利用者登録画面（登録後に自動ログイン対応）
 // ============================================================
-function RegisterScreen({ onRegister }) {
+function RegisterScreen({ onRegister, onBackToLogin }) {
   const [form, setForm] = useState({ name: '', nameKana: '', birthdate: '', phone: '', email: '', password: '', passwordConfirm: '', lineUserId: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
   const handleRegister = async () => {
+    // バリデーション
     if (!form.name || !form.nameKana || !form.email || !form.password) {
-      setError('必須項目を入力してください');
+      setError('必須項目（氏名・ふりがな・メール・パスワード）を入力してください');
       return;
     }
-    if (form.password !== form.passwordConfirm) {
-      setError('パスワードが一致しません');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      setError('メールアドレスの形式が正しくありません');
       return;
     }
     if (form.password.length < 8) {
       setError('パスワードは8文字以上で入力してください');
       return;
     }
+    if (form.password !== form.passwordConfirm) {
+      setError('パスワードが一致しません');
+      return;
+    }
     setLoading(true);
+    setError('');
     const res = await apiPost({ action: 'registerUser', ...form });
     if (res.success) {
-      onRegister(res.data);
+      setDone(true);
+      // 登録完了後2秒待って自動ログイン
+      setTimeout(() => onRegister(res.data), 1500);
     } else {
       setError(res.error?.message || '登録に失敗しました');
     }
@@ -493,10 +525,38 @@ function RegisterScreen({ onRegister }) {
 
   const R = <span style={{ color: C.danger, fontSize: 11 }}>*</span>;
 
+  // 登録完了メッセージ
+  if (done) {
+    return (
+      <div style={{ textAlign: 'center', padding: '40px 16px' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: C.primary, marginBottom: 8 }}>登録が完了しました！</h3>
+        <p style={{ color: C.muted, fontSize: 13 }}>そのまま予約画面へ移動します...</p>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>利用者登録</h3>
-      {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+      {/* ログインに戻るリンク */}
+      {onBackToLogin && (
+        <div style={{ marginBottom: 12 }}>
+          <button style={{ background: 'none', border: 'none', color: C.primary, fontSize: 12, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+            onClick={onBackToLogin}>
+            ← ログイン画面に戻る
+          </button>
+        </div>
+      )}
+
+      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 4 }}>利用者登録</h3>
+      <p style={{ fontSize: 11.5, color: C.muted, marginBottom: 12 }}>登録後はメールアドレスとパスワードでログインできます</p>
+
+      {error && (
+        <div style={{ background: '#fef2f2', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.danger, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+
       <table style={S.formTbl}>
         <tbody>
           <tr><th style={S.formTh}>氏名{R}</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="山田太郎" value={form.name} onChange={e => set('name', e.target.value)} /></td></tr>
@@ -505,13 +565,18 @@ function RegisterScreen({ onRegister }) {
           <tr><th style={S.formTh}>電話番号</th><td style={S.formTd}><input style={S.formInput} type="tel" placeholder="09012345678" value={form.phone} onChange={e => set('phone', e.target.value)} /></td></tr>
           <tr><th style={S.formTh}>E-Mail{R}</th><td style={S.formTd}><input style={S.formInput} type="email" placeholder="yamada@example.com" value={form.email} onChange={e => set('email', e.target.value)} /></td></tr>
           <tr><th style={S.formTh}>パスワード{R}</th><td style={S.formTd}><input style={S.formInput} type="password" placeholder="8文字以上" value={form.password} onChange={e => set('password', e.target.value)} /></td></tr>
-          <tr><th style={S.formTh}>パスワード（確認）{R}</th><td style={S.formTd}><input style={S.formInput} type="password" placeholder="もう一度入力" value={form.passwordConfirm} onChange={e => set('passwordConfirm', e.target.value)} /></td></tr>
-          <tr><th style={S.formTh}>LINE ID</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="LINE連携する場合は入力" value={form.lineUserId} onChange={e => set('lineUserId', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>確認用{R}</th><td style={S.formTd}><input style={S.formInput} type="password" placeholder="もう一度入力" value={form.passwordConfirm} onChange={e => set('passwordConfirm', e.target.value)} /></td></tr>
+          <tr><th style={S.formTh}>LINE ID</th><td style={S.formTd}>
+            <input style={S.formInput} type="text" placeholder="任意（LINE連携する場合）" value={form.lineUserId} onChange={e => set('lineUserId', e.target.value)} />
+            <span style={{ color: C.muted, fontSize: 11, display: 'block', marginTop: 3 }}>LINEでログインの場合は自動入力</span>
+          </td></tr>
         </tbody>
       </table>
       <div style={S.btnRow}>
-        <button style={S.btn('gray')} onClick={() => setForm({ name: '', nameKana: '', birthdate: '', phone: '', email: '', password: '', passwordConfirm: '', lineUserId: '' })}>キャンセル</button>
-        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={handleRegister}>{loading ? '登録中...' : '登録する'}</button>
+        <button style={{ ...S.btn('primary'), width: '100%', justifyContent: 'center', padding: '10px 0', fontSize: 14 }}
+          onClick={handleRegister}>
+          {loading ? '登録中...' : '登録する'}
+        </button>
       </div>
     </div>
   );
@@ -595,30 +660,49 @@ export default function BookingCalendar() {
 
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
 
-  // ログイン処理
-  const handleLogin = (userData) => { setUser(userData); setPage('cal'); setNavPage('cal'); };
+  // ログイン・登録処理
+  const handleLogin     = (userData) => { setUser(userData); setPage('cal'); setNavPage('cal'); };
   const handleGuestBook = () => { setPage('cal'); setNavPage('cal'); };
-  const handleLogout = () => { setUser(null); setPage('login'); };
+  const handleLogout    = () => { setUser(null); setPage('login'); };
+  const handleGoRegister = () => { setPage('register-pre'); };
 
   // ナビゲーション
   const handleNav = (key) => {
     if (key === 'logout') { handleLogout(); return; }
     setNavPage(key);
-    if (key === 'cal') setPage('cal');
-    else if (key === 'confirm') setPage('confirm');
+    if (key === 'cal')           setPage('cal');
+    else if (key === 'confirm')  setPage('confirm');
     else if (key === 'register') setPage('register');
-    else if (key === 'inquiry') setPage('inquiry');
+    else if (key === 'inquiry')  setPage('inquiry');
   };
 
   // ページタイトル取得
   const getTitle = () => {
-    const titles = { cal: '予約', calDay: '日程選択', form: '予約入力', complete: '予約完了', confirm: '予約確認', register: '利用者登録', inquiry: '問い合わせ' };
+    const titles = { cal: '予約', calDay: '日程選択', form: '予約入力', complete: '予約完了', confirm: '予約確認', register: '利用者登録', 'register-pre': '新規登録', inquiry: '問い合わせ' };
     return titles[page] || '予約システム';
   };
 
-  // ログイン画面はナビなし
+  // ログイン画面（ナビなし）
   if (page === 'login') {
-    return <LoginScreen onLineLogin={() => {}} onEmailLogin={handleLogin} onGuestBook={handleGuestBook} />;
+    return <LoginScreen onLineLogin={() => {}} onEmailLogin={handleLogin} onGuestBook={handleGuestBook} onGoRegister={handleGoRegister} />;
+  }
+
+  // ログイン前の新規登録画面（ナビなし）
+  if (page === 'register-pre') {
+    return (
+      <div style={S.wrap}>
+        <div style={S.header}>
+          <button style={S.backBtn} onClick={() => setPage('login')}>‹</button>
+          <h3 style={S.headerTitle}>新規登録</h3>
+        </div>
+        <div style={S.body}>
+          <RegisterScreen
+            onRegister={userData => { setUser(userData); setPage('cal'); setNavPage('cal'); }}
+            onBackToLogin={() => setPage('login')}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -679,7 +763,10 @@ export default function BookingCalendar() {
           />
         )}
         {page === 'register' && (
-          <RegisterScreen onRegister={userData => { setUser(userData); setPage('cal'); setNavPage('cal'); }} />
+          <RegisterScreen
+            onRegister={userData => { setUser(userData); setPage('cal'); setNavPage('cal'); }}
+            onBackToLogin={null}
+          />
         )}
         {page === 'inquiry' && <InquiryScreen />}
       </div>
