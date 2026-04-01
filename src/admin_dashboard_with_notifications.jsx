@@ -460,10 +460,11 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
 function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
   const [editStaff, setEditStaff] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: '', workDays: '', menus: '' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [newStaff, setNewStaff] = useState({ name: '', workDays: [], menus: [] });
   const [saved, setSaved] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // 今月の予約件数を集計
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const countByStaff = {};
@@ -475,7 +476,48 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
 
   const colors = [C.primary, C.accent, C.success, C.warning];
   const DAY_NAMES = ['日','月','火','水','木','金','土'];
-  const MENU_IDS = menuList.map(m => m.menuId);
+
+  const showMsg = (msg) => { setSaved(msg); setTimeout(() => setSaved(''), 4000); };
+
+  const handleSaveStaff = async () => {
+    if (!editStaff) return;
+    setLoading(true);
+    const res = await apiPost({
+      action: 'updateStaff',
+      staffId: editStaff.staffId,
+      name: editStaff.name,
+      workDays: editStaff.workDaysArr.join(','),
+      menus: editStaff.menusArr.join(','),
+    });
+    if (res.success) { showMsg(`${editStaff.name}の設定を保存しました`); onRefreshStaff(); }
+    else showMsg('保存に失敗しました: ' + (res.error?.message || ''));
+    setLoading(false);
+    setEditStaff(null);
+  };
+
+  const handleAddStaff = async () => {
+    if (!newStaff.name) { alert('氏名を入力してください'); return; }
+    setLoading(true);
+    const res = await apiPost({
+      action: 'addStaff',
+      name: newStaff.name,
+      workDays: newStaff.workDays.join(','),
+      menus: newStaff.menus.join(','),
+    });
+    if (res.success) { showMsg(`「${newStaff.name}」を追加しました`); onRefreshStaff(); setShowAdd(false); setNewStaff({ name: '', workDays: [], menus: [] }); }
+    else showMsg('追加に失敗しました: ' + (res.error?.message || ''));
+    setLoading(false);
+  };
+
+  const handleDeleteStaff = async () => {
+    if (!deleteTarget) return;
+    setLoading(true);
+    const res = await apiPost({ action: 'deleteStaff', staffId: deleteTarget.staffId });
+    if (res.success) { showMsg(`「${deleteTarget.name}」を削除しました`); onRefreshStaff(); }
+    else showMsg('削除に失敗しました: ' + (res.error?.message || ''));
+    setLoading(false);
+    setDeleteTarget(null);
+  };
 
   return (
     <div>
@@ -501,53 +543,54 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
       <table style={S.gridTbl}>
         <thead>
           <tr>
-            <th style={S.th}></th>
-            {staffList.map(s => <th key={s.staffId} style={S.th}>{s.name}</th>)}
+            <th style={S.th}>氏名</th>
+            <th style={S.th}>勤務曜日</th>
+            <th style={S.th}>担当コース</th>
+            <th style={S.th}>操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td style={{ ...S.td, fontWeight: 600 }}>勤務曜日</td>
-            {staffList.map(s => <td key={s.staffId} style={S.td}>{s.workDays || '—'}</td>)}
-          </tr>
-          <tr>
-            <td style={{ ...S.td, fontWeight: 600 }}>担当コース</td>
-            {staffList.map(s => (
-              <td key={s.staffId} style={S.td}>
+          {staffList.map(s => (
+            <tr key={s.staffId}>
+              <td style={S.td}><b>{s.name}</b><span style={{ color: C.muted, fontSize: 11, marginLeft: 6 }}>{s.staffId}</span></td>
+              <td style={S.td}>{s.workDays || '—'}</td>
+              <td style={S.td}>
                 {(s.menus || '').split(',').filter(Boolean).map(mId => {
                   const m = menuList.find(x => x.menuId === mId.trim());
                   return m ? <span key={mId} style={{ ...S.badge('blue'), marginRight: 4 }}>{m.name}</span> : null;
                 })}
               </td>
-            ))}
-          </tr>
-          <tr>
-            <td style={S.td}></td>
-            {staffList.map(s => (
-              <td key={s.staffId} style={S.td}>
-                <button style={{ color: C.primary, textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5 }}
-                  onClick={() => setEditStaff({ ...s, workDaysArr: (s.workDays || '').split(',').map(d=>d.trim()), menusArr: (s.menus || '').split(',').map(m=>m.trim()) })}>
-                  設定画面へ
-                </button>
+              <td style={S.td}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Btn v="outline" style={{ fontSize: 11, padding: '3px 10px' }}
+                    onClick={() => setEditStaff({ ...s, workDaysArr: (s.workDays||'').split(',').map(d=>d.trim()).filter(Boolean), menusArr: (s.menus||'').split(',').map(m=>m.trim()).filter(Boolean) })}>
+                    設定
+                  </Btn>
+                  <Btn v="danger" style={{ fontSize: 11, padding: '3px 10px' }}
+                    onClick={() => setDeleteTarget(s)}>
+                    削除
+                  </Btn>
+                </div>
               </td>
-            ))}
-          </tr>
+            </tr>
+          ))}
         </tbody>
       </table>
+
       <div style={S.btnRow}>
-        <Btn v="primary" onClick={() => setShowAdd(true)}>施術者を追加</Btn>
-        <Btn v="danger" onClick={() => {
-          const name = window.prompt('削除する施術者名を入力してください');
-          if (name) alert(`「${name}」の削除はGoogle Sheetsの施術者シートから直接削除してください。`);
-        }}>施術者を削除</Btn>
-        <Btn v="accent" onClick={() => alert('翌月のシフトは現在の勤務設定を引き継ぎます。施術者設定を確認してください。')}>翌月のシフトへ反映</Btn>
+        <Btn v="primary" onClick={() => setShowAdd(true)}>＋ 施術者を追加</Btn>
+        <Btn v="accent" onClick={() => alert('翌月のシフトは現在の勤務設定を引き継ぎます。')}>翌月のシフトへ反映</Btn>
       </div>
-      <div style={S.note('warn')}>💡「翌月のシフトへ反映」は毎月確認が必要です。</div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
 
       {/* 施術者設定モーダル */}
       {editStaff && (
         <Modal title={`${editStaff.name}　勤務設定`} onClose={() => setEditStaff(null)}>
+          <div style={S.card}>
+            <div style={S.sectionTitle}>氏名</div>
+            <input style={S.input} type="text" value={editStaff.name}
+              onChange={e => setEditStaff(prev => ({ ...prev, name: e.target.value }))} />
+          </div>
           <div style={S.card}>
             <div style={S.sectionTitle}>勤務曜日</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -578,10 +621,9 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
           </div>
           <div style={S.btnRow}>
             <Btn v="gray" onClick={() => setEditStaff(null)}>キャンセル</Btn>
-            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
-              setSaved(`${editStaff.name}の設定を更新しました（Google Sheetsの施術者シートに反映してください）`);
-              setEditStaff(null);
-            }}>確定</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSaveStaff}>
+              {loading ? '保存中...' : '保存'}
+            </Btn>
           </div>
         </Modal>
       )}
@@ -591,16 +633,18 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
         <Modal title="施術者を追加" onClose={() => setShowAdd(false)}>
           <table style={S.formTbl}>
             <tbody>
-              <FormRow label="氏名" required><input style={S.input} type="text" placeholder="例：田中次郎" value={newStaff.name} onChange={e => setNewStaff(p=>({...p,name:e.target.value}))} /></FormRow>
+              <FormRow label="氏名" required>
+                <input style={S.input} type="text" placeholder="例：田中次郎"
+                  value={newStaff.name} onChange={e => setNewStaff(p=>({...p,name:e.target.value}))} />
+              </FormRow>
               <FormRow label="勤務曜日">
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {DAY_NAMES.map(d => (
                     <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={(newStaff.workDays||'').split(',').map(x=>x.trim()).includes(d)}
+                      <input type="checkbox" checked={newStaff.workDays.includes(d)}
                         onChange={e => {
-                          const arr = (newStaff.workDays||'').split(',').map(x=>x.trim()).filter(Boolean);
-                          const next = e.target.checked ? [...arr,d] : arr.filter(x=>x!==d);
-                          setNewStaff(p=>({...p,workDays:next.join(',')}));
+                          const arr = e.target.checked ? [...newStaff.workDays, d] : newStaff.workDays.filter(x=>x!==d);
+                          setNewStaff(p=>({...p,workDays:arr}));
                         }} /> {d}
                     </label>
                   ))}
@@ -610,11 +654,10 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {menuList.map(m => (
                     <label key={m.menuId} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={(newStaff.menus||'').split(',').map(x=>x.trim()).includes(m.menuId)}
+                      <input type="checkbox" checked={newStaff.menus.includes(m.menuId)}
                         onChange={e => {
-                          const arr = (newStaff.menus||'').split(',').map(x=>x.trim()).filter(Boolean);
-                          const next = e.target.checked ? [...arr,m.menuId] : arr.filter(x=>x!==m.menuId);
-                          setNewStaff(p=>({...p,menus:next.join(',')}));
+                          const arr = e.target.checked ? [...newStaff.menus, m.menuId] : newStaff.menus.filter(x=>x!==m.menuId);
+                          setNewStaff(p=>({...p,menus:arr}));
                         }} /> {m.name}
                     </label>
                   ))}
@@ -622,15 +665,27 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
               </FormRow>
             </tbody>
           </table>
-          <div style={S.note('info')}>追加後はGoogle Sheetsの「施術者」シートにも反映されます。</div>
           <div style={S.btnRow}>
             <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
-            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
-              if (!newStaff.name) return alert('氏名を入力してください');
-              setSaved(`「${newStaff.name}」を追加しました（Google Sheetsの施術者シートにも追加してください）`);
-              setShowAdd(false);
-              setNewStaff({ name: '', workDays: '', menus: '' });
-            }}>追加する</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleAddStaff}>
+              {loading ? '追加中...' : '追加する'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 削除確認モーダル */}
+      {deleteTarget && (
+        <Modal title="施術者を削除" onClose={() => setDeleteTarget(null)}>
+          <p style={{ fontSize: 13, marginBottom: 16 }}>
+            <b>「{deleteTarget.name}」</b>を削除しますか？<br />
+            <span style={{ color: C.danger, fontSize: 12 }}>この操作は元に戻せません。</span>
+          </p>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setDeleteTarget(null)}>キャンセル</Btn>
+            <Btn v="danger" style={{ marginLeft: 'auto' }} onClick={handleDeleteStaff}>
+              {loading ? '削除中...' : '削除する'}
+            </Btn>
           </div>
         </Modal>
       )}
