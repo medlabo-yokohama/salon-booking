@@ -1,40 +1,36 @@
 // ============================================================
 // api/webhook.js
 // LINE Webhook中継エンドポイント（Vercel Serverless Function）
-// LINE → Vercel → Apps Script の順にリクエストを中継する
+// LINEに即座に200を返し、Apps Scriptへの転送はバックグラウンドで行う
 // ============================================================
 
 const GAS_URL = process.env.VITE_GAS_URL || '';
 
 export default async function handler(req, res) {
-  // LINEのVerifyリクエスト（GET）に対応する
+  // GETリクエスト（Verify）に即座に200を返す
   if (req.method === 'GET') {
     return res.status(200).json({ status: 'ok' });
   }
 
-  // POSTリクエスト以外は拒否する
+  // POST以外は拒否する
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  try {
-    // LINEから受け取ったbodyをApps Scriptに転送する
-    const body = req.body;
+  const body = req.body;
 
-    // Apps ScriptにPOSTリクエストを送信する
-    const response = await fetch(GAS_URL, {
+  // LINEに即座に200を返す（5秒タイムアウト防止）
+  res.status(200).json({ status: 'ok' });
+
+  // レスポンス後にバックグラウンドでApps Scriptに転送する
+  try {
+    await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      redirect: 'follow', // 302リダイレクトを自動追従する
+      redirect: 'follow',
     });
-
-    // Apps Scriptのレスポンスをそのまま返す
-    const data = await response.json();
-    return res.status(200).json(data);
   } catch (err) {
-    console.error('Webhook中継エラー:', err);
-    // LINEには必ず200を返す（エラーでも再送されてしまうため）
-    return res.status(200).json({ status: 'ok' });
+    console.error('Apps Script転送エラー:', err);
   }
 }
