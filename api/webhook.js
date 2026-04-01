@@ -1,10 +1,7 @@
 // ============================================================
 // api/webhook.js
 // LINE Webhook中継エンドポイント（Vercel Serverless Function）
-// LINEに即座に200を返し、Apps Scriptへの転送はバックグラウンドで行う
 // ============================================================
-
-const GAS_URL = process.env.VITE_GAS_URL || '';
 
 export default async function handler(req, res) {
   // GETリクエスト（Verify）に即座に200を返す
@@ -22,15 +19,38 @@ export default async function handler(req, res) {
   // LINEに即座に200を返す（5秒タイムアウト防止）
   res.status(200).json({ status: 'ok' });
 
-  // レスポンス後にバックグラウンドでApps Scriptに転送する
+  // Apps ScriptのURLを環境変数から取得する
+  const GAS_URL = process.env.VITE_GAS_URL || '';
+  if (!GAS_URL) {
+    console.error('VITE_GAS_URL が設定されていません');
+    return;
+  }
+
+  // Apps Scriptは302リダイレクトを返すため
+  // manualでリダイレクトを受け取り、LocationヘッダーのURLに再リクエストする
   try {
-    await fetch(GAS_URL, {
+    const firstRes = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      redirect: 'follow',
+      redirect: 'manual',
     });
+
+    // 302リダイレクトの場合はLocationヘッダーのURLに再リクエストする
+    if (firstRes.status === 302 || firstRes.status === 301) {
+      const redirectUrl = firstRes.headers.get('location');
+      if (redirectUrl) {
+        await fetch(redirectUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        console.log('リダイレクト先に転送完了:', redirectUrl);
+      }
+    } else {
+      console.log('Apps Script転送完了 ステータス:', firstRes.status);
+    }
   } catch (err) {
-    console.error('Apps Script転送エラー:', err);
+    console.error('Apps Script転送エラー:', err.message);
   }
 }
