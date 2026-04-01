@@ -479,7 +479,7 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
 
   const showMsg = (msg) => { setSaved(msg); setTimeout(() => setSaved(''), 4000); };
 
-  const handleSaveStaff = async () => {
+  const handleSaveStaff = async (schedule) => {
     if (!editStaff) return;
     setLoading(true);
     const res = await apiPost({
@@ -488,6 +488,7 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
       name: editStaff.name,
       workDays: editStaff.workDaysArr.join(','),
       menus: editStaff.menusArr.join(','),
+      schedule: schedule ? JSON.stringify(schedule) : undefined,
     });
     if (res.success) { showMsg(`${editStaff.name}の設定を保存しました`); onRefreshStaff(); }
     else showMsg('保存に失敗しました: ' + (res.error?.message || ''));
@@ -586,25 +587,77 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
       {/* 施術者設定モーダル */}
       {editStaff && (
         <Modal title={`${editStaff.name}　勤務設定`} onClose={() => setEditStaff(null)}>
+          {/* 氏名 */}
           <div style={S.card}>
             <div style={S.sectionTitle}>氏名</div>
             <input style={S.input} type="text" value={editStaff.name}
               onChange={e => setEditStaff(prev => ({ ...prev, name: e.target.value }))} />
           </div>
+
+          {/* 曜日ごと勤務時間設定 */}
           <div style={S.card}>
-            <div style={S.sectionTitle}>勤務曜日</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              {DAY_NAMES.map(d => (
-                <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="checkbox" checked={editStaff.workDaysArr.includes(d)}
-                    onChange={e => {
-                      const arr = e.target.checked ? [...editStaff.workDaysArr, d] : editStaff.workDaysArr.filter(x => x !== d);
-                      setEditStaff(prev => ({ ...prev, workDaysArr: arr }));
-                    }} /> {d}
-                </label>
-              ))}
+            <div style={S.sectionTitle}>曜日ごと勤務設定</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>
+              🌙 休憩時間は店舗管理画面の設定が共通適用されます
             </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  {['曜日','区分','開始','終了'].map(h => (
+                    <th key={h} style={{ background: C.primary, color: '#fff', padding: '5px 8px', textAlign: 'center', border: `1px solid ${C.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {DAY_NAMES.map(day => {
+                  const schedKey = `schedule_${day}`;
+                  const sched = editStaff[schedKey] || { type: 'off', start: '09:00', end: '18:00' };
+                  const updateSched = (updates) => setEditStaff(prev => ({
+                    ...prev,
+                    [schedKey]: { ...sched, ...updates },
+                    workDaysArr: updates.type === 'off'
+                      ? prev.workDaysArr.filter(d => d !== day)
+                      : prev.workDaysArr.includes(day) ? prev.workDaysArr : [...prev.workDaysArr, day],
+                  }));
+                  return (
+                    <tr key={day} style={{ background: sched.type === 'off' ? '#f8fafc' : C.primaryPale }}>
+                      <td style={{ border: `1px solid ${C.border}`, padding: '4px 8px', textAlign: 'center', fontWeight: 600 }}>{day}</td>
+                      <td style={{ border: `1px solid ${C.border}`, padding: '4px 6px' }}>
+                        <select style={{ ...S.input, fontSize: 11.5 }} value={sched.type}
+                          onChange={e => {
+                            const t = e.target.value;
+                            const presets = { off: { start:'09:00',end:'18:00' }, am: { start:'09:00',end:'12:00' }, pm: { start:'13:00',end:'18:00' }, full: { start:'09:00',end:'18:00' }, custom: { start:'09:00',end:'18:00' } };
+                            updateSched({ type: t, ...presets[t] });
+                          }}>
+                          <option value="off">休み</option>
+                          <option value="am">午前</option>
+                          <option value="pm">午後</option>
+                          <option value="full">終日</option>
+                          <option value="custom">任意</option>
+                        </select>
+                      </td>
+                      <td style={{ border: `1px solid ${C.border}`, padding: '4px 6px' }}>
+                        {sched.type !== 'off' && (
+                          <input style={{ ...S.input, fontSize: 11.5 }} type="time" value={sched.start}
+                            disabled={sched.type !== 'custom' && sched.type !== 'am' && sched.type !== 'pm' && sched.type !== 'full'}
+                            onChange={e => updateSched({ start: e.target.value })} />
+                        )}
+                      </td>
+                      <td style={{ border: `1px solid ${C.border}`, padding: '4px 6px' }}>
+                        {sched.type !== 'off' && (
+                          <input style={{ ...S.input, fontSize: 11.5 }} type="time" value={sched.end}
+                            disabled={sched.type !== 'custom' && sched.type !== 'am' && sched.type !== 'pm' && sched.type !== 'full'}
+                            onChange={e => updateSched({ end: e.target.value })} />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
+
+          {/* 担当コース */}
           <div style={S.card}>
             <div style={S.sectionTitle}>担当コース</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -619,9 +672,19 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
               ))}
             </div>
           </div>
+
           <div style={S.btnRow}>
             <Btn v="gray" onClick={() => setEditStaff(null)}>キャンセル</Btn>
-            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSaveStaff}>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
+              // 曜日ごとスケジュールをJSONに変換して保存
+              const schedule = {};
+              DAY_NAMES.forEach(day => {
+                const s = editStaff[`schedule_${day}`];
+                if (s) schedule[day] = s;
+              });
+              setEditStaff(prev => ({ ...prev, schedule: JSON.stringify(schedule) }));
+              await handleSaveStaff(schedule);
+            }}>
               {loading ? '保存中...' : '保存'}
             </Btn>
           </div>
@@ -697,20 +760,53 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
 // 店舗管理画面
 // ============================================================
 function StoreScreen({ settings, onSave }) {
+  const DAY_NAMES = ['日','月','火','水','木','金','土'];
+
+  // 休憩時間をJSONから配列に変換
+  const parseBreaks = (raw) => {
+    try { return JSON.parse(raw || '[]'); } catch { return [{ start: '12:00', end: '13:00' }]; }
+  };
+
   const [form, setForm] = useState({
-    storeName: settings['店舗名'] || '',
-    storeEmail: settings['店舗メール'] || '',
-    closedDays: settings['定休曜日'] || '日',
-    unitMin: String(settings['施術単位（分）'] || '30'),
-    refreshSec: String(settings['自動更新間隔（秒）'] || '30'),
+    storeName:   settings['店舗名'] || '',
+    storeEmail:  settings['店舗メール'] || '',
+    closedDays:  (settings['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
+    closedDates: settings['定休日（任意）'] || '',
+    openStart:   settings['営業開始時刻'] || '09:00',
+    openEnd:     settings['営業終了時刻'] || '18:00',
+    breaks:      parseBreaks(settings['休憩時間']),
+    unitMin:     String(settings['施術単位（分）'] || '30'),
+    refreshSec:  String(settings['自動更新間隔（秒）'] || '30'),
   });
   const [saved, setSaved] = useState(false);
-  const DAY_NAMES = ['日','月','火','水','木','金','土'];
-  const closedArr = form.closedDays.split(',').map(d => d.trim()).filter(Boolean);
 
   const toggleDay = (day) => {
-    const arr = closedArr.includes(day) ? closedArr.filter(d => d !== day) : [...closedArr, day];
-    setForm(p => ({ ...p, closedDays: arr.join(',') }));
+    const arr = form.closedDays.includes(day)
+      ? form.closedDays.filter(d => d !== day)
+      : [...form.closedDays, day];
+    setForm(p => ({ ...p, closedDays: arr }));
+  };
+
+  const addBreak = () => setForm(p => ({ ...p, breaks: [...p.breaks, { start: '12:00', end: '13:00' }] }));
+  const removeBreak = (i) => setForm(p => ({ ...p, breaks: p.breaks.filter((_, idx) => idx !== i) }));
+  const updateBreak = (i, key, val) => setForm(p => ({
+    ...p, breaks: p.breaks.map((b, idx) => idx === i ? { ...b, [key]: val } : b)
+  }));
+
+  const handleSave = async () => {
+    await onSave({
+      '店舗名': form.storeName,
+      '店舗メール': form.storeEmail,
+      '定休曜日': form.closedDays.join(','),
+      '定休日（任意）': form.closedDates,
+      '営業開始時刻': form.openStart,
+      '営業終了時刻': form.openEnd,
+      '休憩時間': JSON.stringify(form.breaks),
+      '施術単位（分）': form.unitMin,
+      '自動更新間隔（秒）': form.refreshSec,
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
 
   return (
@@ -718,17 +814,64 @@ function StoreScreen({ settings, onSave }) {
       <div style={S.pageHeader}><h2 style={S.pageTitle}>店舗管理</h2></div>
       <table style={S.formTbl}>
         <tbody>
-          <FormRow label="店舗名"><input style={S.input} type="text" value={form.storeName} onChange={e => setForm(p=>({...p,storeName:e.target.value}))} /></FormRow>
-          <FormRow label="E-Mail"><input style={S.input} type="email" value={form.storeEmail} onChange={e => setForm(p=>({...p,storeEmail:e.target.value}))} /></FormRow>
-          <FormRow label="定休日">
+          <FormRow label="店舗名">
+            <input style={S.input} type="text" value={form.storeName} onChange={e => setForm(p=>({...p,storeName:e.target.value}))} />
+          </FormRow>
+          <FormRow label="E-Mail">
+            <input style={S.input} type="email" value={form.storeEmail} onChange={e => setForm(p=>({...p,storeEmail:e.target.value}))} />
+          </FormRow>
+
+          {/* 定休日（曜日） */}
+          <FormRow label="定休日（曜日）">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {DAY_NAMES.map(d => (
                 <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="checkbox" checked={closedArr.includes(d)} onChange={() => toggleDay(d)} /> {d}
+                  <input type="checkbox" checked={form.closedDays.includes(d)} onChange={() => toggleDay(d)} /> {d}
                 </label>
               ))}
             </div>
           </FormRow>
+
+          {/* 定休日（任意日付） */}
+          <FormRow label="定休日（任意日付）">
+            <input style={S.input} type="text" placeholder="例：2026-01-01,2026-01-02（カンマ区切り）"
+              value={form.closedDates} onChange={e => setForm(p=>({...p,closedDates:e.target.value}))} />
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>祝日・臨時休業日をYYYY-MM-DD形式で入力</div>
+          </FormRow>
+
+          {/* 営業時間 */}
+          <FormRow label="営業時間">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input style={{ ...S.input, width: 90 }} type="time" value={form.openStart}
+                onChange={e => setForm(p=>({...p,openStart:e.target.value}))} />
+              <span style={{ fontSize: 13 }}>〜</span>
+              <input style={{ ...S.input, width: 90 }} type="time" value={form.openEnd}
+                onChange={e => setForm(p=>({...p,openEnd:e.target.value}))} />
+            </div>
+          </FormRow>
+
+          {/* 休憩時間 */}
+          <FormRow label="休憩時間">
+            <div>
+              {form.breaks.map((b, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <input style={{ ...S.input, width: 90 }} type="time" value={b.start}
+                    onChange={e => updateBreak(i, 'start', e.target.value)} />
+                  <span style={{ fontSize: 13 }}>〜</span>
+                  <input style={{ ...S.input, width: 90 }} type="time" value={b.end}
+                    onChange={e => updateBreak(i, 'end', e.target.value)} />
+                  <button style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: 16 }}
+                    onClick={() => removeBreak(i)}>✕</button>
+                </div>
+              ))}
+              <Btn v="outline" style={{ fontSize: 11, padding: '3px 10px', marginTop: 4 }} onClick={addBreak}>
+                ＋ 休憩を追加
+              </Btn>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>全施術者に共通適用されます</div>
+            </div>
+          </FormRow>
+
+          {/* 施術単位 */}
           <FormRow label="施術単位">
             <div style={{ display: 'flex', gap: 16 }}>
               {['15','30','60'].map(v => (
@@ -738,25 +881,30 @@ function StoreScreen({ settings, onSave }) {
               ))}
             </div>
           </FormRow>
+
+          {/* 自動更新間隔 */}
           <FormRow label="予約画面 自動更新間隔">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              {[{l:'自動更新なし',v:'0'},{l:'15秒',v:'15'},{l:'30秒',v:'30'},{l:'1分',v:'60'},{l:'5分',v:'300'}].map(o => (
+              {[{l:'なし',v:'0'},{l:'15秒',v:'15'},{l:'30秒',v:'30'},{l:'1分',v:'60'},{l:'5分',v:'300'}].map(o => (
                 <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
                   <input type="radio" name="refresh" checked={form.refreshSec === o.v} onChange={() => setForm(p=>({...p,refreshSec:o.v}))} /> {o.l}
                 </label>
               ))}
             </div>
-            <div style={S.note('info')}>現在の設定：<b>{form.refreshSec === '0' ? '自動更新なし' : `${form.refreshSec}秒ごとに自動更新`}</b></div>
+            <div style={S.note('info')}>現在：<b>{form.refreshSec === '0' ? '自動更新なし' : `${form.refreshSec}秒ごとに自動更新`}</b></div>
           </FormRow>
         </tbody>
       </table>
       <div style={S.btnRow}>
-        <Btn v="gray" onClick={() => setForm({ storeName: settings['店舗名']||'', storeEmail: settings['店舗メール']||'', closedDays: settings['定休曜日']||'日', unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30') })}>キャンセル</Btn>
-        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
-          await onSave({ '店舗名': form.storeName, '店舗メール': form.storeEmail, '定休曜日': form.closedDays, '施術単位（分）': form.unitMin, '自動更新間隔（秒）': form.refreshSec });
-          setSaved(true);
-          setTimeout(() => setSaved(false), 3000);
-        }}>確定</Btn>
+        <Btn v="gray" onClick={() => setForm({
+          storeName: settings['店舗名']||'', storeEmail: settings['店舗メール']||'',
+          closedDays: (settings['定休曜日']||'日').split(',').map(d=>d.trim()).filter(Boolean),
+          closedDates: settings['定休日（任意）']||'',
+          openStart: settings['営業開始時刻']||'09:00', openEnd: settings['営業終了時刻']||'18:00',
+          breaks: parseBreaks(settings['休憩時間']),
+          unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30'),
+        })}>キャンセル</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>確定</Btn>
       </div>
       {saved && <div style={S.note('success')}>✅ 設定を保存しました</div>}
     </div>
