@@ -574,7 +574,26 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
               <td style={S.td}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <Btn v="outline" style={{ fontSize: 11, padding: '3px 10px' }}
-                    onClick={() => setEditStaff({ ...s, workDaysArr: (s.workDays||'').split(',').map(d=>d.trim()).filter(Boolean), menusArr: (s.menus||'').split(',').map(m=>m.trim()).filter(Boolean) })}>
+                    onClick={() => {
+                      // 既存の勤務スケジュールをJSONから復元する
+                      const baseSchedule = initSchedule();
+                      try {
+                        const parsedSched = JSON.parse(s.schedule || '{}');
+                        Object.keys(parsedSched).forEach(day => { baseSchedule[day] = parsedSched[day]; });
+                      } catch(e) {
+                        // scheduleがない場合はworkDaysを終日でデフォルト設定
+                        const days = (s.workDays||'').split(',').map(d=>d.trim()).filter(Boolean);
+                        days.forEach(d => { baseSchedule[d] = { type: 'full', start: '09:00', end: '18:00' }; });
+                      }
+                      const schedFields = {};
+                      Object.entries(baseSchedule).forEach(([day, val]) => { schedFields['schedule_' + day] = val; });
+                      setEditStaff({
+                        ...s,
+                        workDaysArr: (s.workDays||'').split(',').map(d=>d.trim()).filter(Boolean),
+                        menusArr: (s.menus||'').split(',').map(m=>m.trim()).filter(Boolean),
+                        ...schedFields,
+                      });
+                    }}>
                     設定
                   </Btn>
                   <Btn v="danger" style={{ fontSize: 11, padding: '3px 10px' }}
