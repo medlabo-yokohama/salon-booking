@@ -461,7 +461,12 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
   const [editStaff, setEditStaff] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [newStaff, setNewStaff] = useState({ name: '', workDays: [], menus: [] });
+  const initSchedule = () => {
+    const s = {};
+    ['日','月','火','水','木','金','土'].forEach(d => { s[d] = { type: 'off', start: '09:00', end: '18:00' }; });
+    return s;
+  };
+  const [newStaff, setNewStaff] = useState({ name: '', menus: [], schedule: initSchedule() });
   const [saved, setSaved] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -499,13 +504,18 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
   const handleAddStaff = async () => {
     if (!newStaff.name) { alert('氏名を入力してください'); return; }
     setLoading(true);
+    // scheduleから勤務曜日を自動抽出
+    const workDays = Object.entries(newStaff.schedule)
+      .filter(([, v]) => v.type !== 'off')
+      .map(([k]) => k);
     const res = await apiPost({
       action: 'addStaff',
       name: newStaff.name,
-      workDays: newStaff.workDays.join(','),
+      workDays: workDays.join(','),
       menus: newStaff.menus.join(','),
+      schedule: JSON.stringify(newStaff.schedule),
     });
-    if (res.success) { showMsg(`「${newStaff.name}」を追加しました`); onRefreshStaff(); setShowAdd(false); setNewStaff({ name: '', workDays: [], menus: [] }); }
+    if (res.success) { showMsg(`「${newStaff.name}」を追加しました`); onRefreshStaff(); setShowAdd(false); setNewStaff({ name: '', menus: [], schedule: initSchedule() }); }
     else showMsg('追加に失敗しました: ' + (res.error?.message || ''));
     setLoading(false);
   };
@@ -692,50 +702,111 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
       )}
 
       {/* 施術者追加モーダル */}
-      {showAdd && (
-        <Modal title="施術者を追加" onClose={() => setShowAdd(false)}>
-          <table style={S.formTbl}>
-            <tbody>
-              <FormRow label="氏名" required>
-                <input style={S.input} type="text" placeholder="例：田中次郎"
-                  value={newStaff.name} onChange={e => setNewStaff(p=>({...p,name:e.target.value}))} />
-              </FormRow>
-              <FormRow label="勤務曜日">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {DAY_NAMES.map(d => (
-                    <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={newStaff.workDays.includes(d)}
-                        onChange={e => {
-                          const arr = e.target.checked ? [...newStaff.workDays, d] : newStaff.workDays.filter(x=>x!==d);
-                          setNewStaff(p=>({...p,workDays:arr}));
-                        }} /> {d}
-                    </label>
-                  ))}
-                </div>
-              </FormRow>
-              <FormRow label="担当コース">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {menuList.map(m => (
-                    <label key={m.menuId} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={newStaff.menus.includes(m.menuId)}
-                        onChange={e => {
-                          const arr = e.target.checked ? [...newStaff.menus, m.menuId] : newStaff.menus.filter(x=>x!==m.menuId);
-                          setNewStaff(p=>({...p,menus:arr}));
-                        }} /> {m.name}
-                    </label>
-                  ))}
-                </div>
-              </FormRow>
-            </tbody>
-          </table>
-          <div style={S.btnRow}>
-            <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
-            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleAddStaff}>
-              {loading ? '追加中...' : '追加する'}
-            </Btn>
-          </div>
-        </Modal>
-      )}
+      {showAdd && (() => {
+        // 一括設定用ヘルパー
+        const PRESETS = { off:{start:'09:00',end:'18:00'}, am:{start:'09:00',end:'12:00'}, pm:{start:'13:00',end:'18:00'}, full:{start:'09:00',end:'18:00'}, custom:{start:'09:00',end:'18:00'} };
+        const setBulk = (type) => {
+          const s = initSchedule();
+          DAY_NAMES.forEach(d => { s[d] = { type, ...PRESETS[type] }; });
+          setNewStaff(p => ({ ...p, schedule: s }));
+        };
+        const updateNewSched = (day, updates) => {
+          setNewStaff(p => ({
+            ...p,
+            schedule: { ...p.schedule, [day]: { ...p.schedule[day], ...updates } }
+          }));
+        };
+        return (
+          <Modal title="施術者を追加" onClose={() => { setShowAdd(false); setNewStaff({ name: '', menus: [], schedule: initSchedule() }); }}>
+            {/* 氏名 */}
+            <div style={S.card}>
+              <div style={S.sectionTitle}>氏名 <span style={{ color: C.danger, fontSize: 11 }}>*</span></div>
+              <input style={S.input} type="text" placeholder="例：田中次郎"
+                value={newStaff.name} onChange={e => setNewStaff(p=>({...p,name:e.target.value}))} />
+            </div>
+
+            {/* 担当コース */}
+            <div style={S.card}>
+              <div style={S.sectionTitle}>担当コース</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                {menuList.map(m => (
+                  <label key={m.menuId} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={newStaff.menus.includes(m.menuId)}
+                      onChange={e => {
+                        const arr = e.target.checked ? [...newStaff.menus, m.menuId] : newStaff.menus.filter(x=>x!==m.menuId);
+                        setNewStaff(p=>({...p,menus:arr}));
+                      }} /> {m.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* 勤務時間設定 */}
+            <div style={S.card}>
+              <div style={S.sectionTitle}>曜日ごと勤務設定</div>
+              {/* 一括設定ボタン */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                <span style={{ fontSize: 11.5, color: C.muted, alignSelf: 'center' }}>一括設定：</span>
+                {[{l:'全休み',t:'off'},{l:'全午前',t:'am'},{l:'全午後',t:'pm'},{l:'全終日',t:'full'}].map(o => (
+                  <Btn key={o.t} v="gray" style={{ fontSize: 11, padding: '3px 10px' }} onClick={() => setBulk(o.t)}>{o.l}</Btn>
+                ))}
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr>{['曜日','区分','開始','終了'].map(h => (
+                    <th key={h} style={{ background: C.primary, color:'#fff', padding:'5px 8px', textAlign:'center', border:`1px solid ${C.border}` }}>{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {DAY_NAMES.map(day => {
+                    const sched = newStaff.schedule[day] || { type:'off', start:'09:00', end:'18:00' };
+                    return (
+                      <tr key={day} style={{ background: sched.type === 'off' ? '#f8fafc' : C.primaryPale }}>
+                        <td style={{ border:`1px solid ${C.border}`, padding:'4px 8px', textAlign:'center', fontWeight:600 }}>{day}</td>
+                        <td style={{ border:`1px solid ${C.border}`, padding:'4px 6px' }}>
+                          <select style={{ ...S.input, fontSize:11.5 }} value={sched.type}
+                            onChange={e => {
+                              const t = e.target.value;
+                              updateNewSched(day, { type:t, ...PRESETS[t] });
+                            }}>
+                            <option value="off">休み</option>
+                            <option value="am">午前</option>
+                            <option value="pm">午後</option>
+                            <option value="full">終日</option>
+                            <option value="custom">任意</option>
+                          </select>
+                        </td>
+                        <td style={{ border:`1px solid ${C.border}`, padding:'4px 6px' }}>
+                          {sched.type !== 'off' && (
+                            <input style={{ ...S.input, fontSize:11.5 }} type="time" value={sched.start}
+                              readOnly={['am','pm','full'].includes(sched.type)}
+                              onChange={e => sched.type === 'custom' && updateNewSched(day, { start:e.target.value })} />
+                          )}
+                        </td>
+                        <td style={{ border:`1px solid ${C.border}`, padding:'4px 6px' }}>
+                          {sched.type !== 'off' && (
+                            <input style={{ ...S.input, fontSize:11.5 }} type="time" value={sched.end}
+                              readOnly={['am','pm','full'].includes(sched.type)}
+                              onChange={e => sched.type === 'custom' && updateNewSched(day, { end:e.target.value })} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>🌙 休憩時間は店舗管理画面の設定が共通適用されます</div>
+            </div>
+
+            <div style={S.btnRow}>
+              <Btn v="gray" onClick={() => { setShowAdd(false); setNewStaff({ name:'', menus:[], schedule:initSchedule() }); }}>キャンセル</Btn>
+              <Btn v="primary" style={{ marginLeft:'auto' }} onClick={handleAddStaff}>
+                {loading ? '追加中...' : '追加する'}
+              </Btn>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* 削除確認モーダル */}
       {deleteTarget && (
