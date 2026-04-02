@@ -961,6 +961,7 @@ function StoreScreen({ settings, onSave }) {
     openEnd:     settings['営業終了時刻'] || '18:00',
     breaks:      parseBreaks(settings['休憩時間']),
     unitMin:     String(settings['施術単位（分）'] || '30'),
+    maxStaffPerUnit: String(settings['施術単位あたり最大施術者数'] || '1'),
     refreshSec:  String(settings['自動更新間隔（秒）'] || '30'),
   });
   const [saved, setSaved] = useState(false);
@@ -989,6 +990,7 @@ function StoreScreen({ settings, onSave }) {
       '営業終了時刻': form.openEnd,
       '休憩時間': JSON.stringify(form.breaks),
       '施術単位（分）': form.unitMin,
+      '施術単位あたり最大施術者数': form.maxStaffPerUnit,
       '自動更新間隔（秒）': form.refreshSec,
     });
     setSaved(true);
@@ -1080,6 +1082,23 @@ function StoreScreen({ settings, onSave }) {
             </div>
           </FormRow>
 
+          {/* 施術単位あたり最大施術者数 */}
+          <FormRow label={`${form.unitMin}分あたり最大施術者数`}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <select style={{ ...S.input, width: 100 }} value={form.maxStaffPerUnit} onChange={e => setForm(p=>({...p,maxStaffPerUnit:e.target.value}))}>
+                <option value="1">1名</option>
+                <option value="2">2名</option>
+                <option value="3">3名</option>
+                <option value="unlimited">制限なし</option>
+              </select>
+              <div style={{ fontSize: 11, color: C.muted }}>
+                {form.maxStaffPerUnit === 'unlimited' 
+                  ? '同じ時間帯に複数の施術者が対応可能' 
+                  : `同時に${form.maxStaffPerUnit}名の施術者が対応可能`}
+              </div>
+            </div>
+          </FormRow>
+
           {/* 自動更新間隔 */}
           <FormRow label="予約画面 自動更新間隔">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
@@ -1100,7 +1119,9 @@ function StoreScreen({ settings, onSave }) {
           closedDatesSet: parseClosedDates(settings['定休日（任意）']||''),
           openStart: settings['営業開始時刻']||'09:00', openEnd: settings['営業終了時刻']||'18:00',
           breaks: parseBreaks(settings['休憩時間']),
-          unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30'),
+          unitMin: String(settings['施術単位（分）']||'30'),
+          maxStaffPerUnit: String(settings['施術単位あたり最大施術者数']||'1'),
+          refreshSec: String(settings['自動更新間隔（秒）']||'30'),
         })}>キャンセル</Btn>
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>確定</Btn>
       </div>
