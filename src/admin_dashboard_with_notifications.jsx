@@ -847,6 +847,95 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
 }
 
 // ============================================================
+// 定休日カレンダーコンポーネント
+// ============================================================
+function ClosedDateCalendar({ closedDatesSet, calDate, onChangeCalDate, onToggleDate }) {
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  const today = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const DAY = ['日','月','火','水','木','金','土'];
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weeks = [];
+  let day = 1 - firstDay;
+  while (day <= daysInMonth) {
+    const week = [];
+    for (let i = 0; i < 7; i++, day++) week.push(day > 0 && day <= daysInMonth ? day : null);
+    weeks.push(week);
+  }
+
+  return (
+    <div>
+      {/* 年月ナビゲーション */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+          onClick={() => onChangeCalDate(new Date(year, month - 1, 1))}>≪</button>
+        {/* 年選択 */}
+        <select value={year} style={{ ...S.input, width: 80, fontSize: 12 }}
+          onChange={e => onChangeCalDate(new Date(parseInt(e.target.value), month, 1))}>
+          {[2025,2026,2027,2028].map(y => <option key={y} value={y}>{y}年</option>)}
+        </select>
+        {/* 月選択 */}
+        <select value={month} style={{ ...S.input, width: 70, fontSize: 12 }}
+          onChange={e => onChangeCalDate(new Date(year, parseInt(e.target.value), 1))}>
+          {[...Array(12)].map((_, i) => <option key={i} value={i}>{i+1}月</option>)}
+        </select>
+        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+          onClick={() => onChangeCalDate(new Date(year, month + 1, 1))}>≫</button>
+        <Btn v="gray" style={{ fontSize: 10, padding: '2px 8px' }}
+          onClick={() => onChangeCalDate(new Date())}>今月</Btn>
+      </div>
+
+      {/* カレンダー */}
+      <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 320 }}>
+        <thead>
+          <tr>{DAY.map((d, i) => (
+            <th key={d} style={{ fontSize: 11, padding: '3px 2px', textAlign: 'center',
+              color: i === 0 ? '#b91c1c' : i === 6 ? '#1d4ed8' : C.muted }}>
+              {d}
+            </th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {weeks.map((week, wi) => (
+            <tr key={wi}>
+              {week.map((d, di) => {
+                if (!d) return <td key={di} style={{ padding: 2 }} />;
+                const dateStr = `${year}-${p(month+1)}-${p(d)}`;
+                const isClosed = closedDatesSet.has(dateStr);
+                const isToday = year === today.getFullYear() && month === today.getMonth() && d === today.getDate();
+                return (
+                  <td key={di} style={{ padding: 2, textAlign: 'center' }}>
+                    <div
+                      onClick={() => onToggleDate(dateStr)}
+                      style={{
+                        width: 32, height: 32, lineHeight: '32px', borderRadius: '50%',
+                        fontSize: 12, cursor: 'pointer', margin: 'auto',
+                        background: isClosed ? C.danger : isToday ? C.primaryPale : 'transparent',
+                        color: isClosed ? '#fff' : di === 0 ? '#b91c1c' : di === 6 ? '#1d4ed8' : C.text,
+                        fontWeight: isClosed || isToday ? 700 : 400,
+                        border: isToday && !isClosed ? `2px solid ${C.primary}` : 'none',
+                        userSelect: 'none',
+                      }}>
+                      {d}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
+        🔴 日付をクリックして定休日を設定・解除できます
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // 店舗管理画面
 // ============================================================
 function StoreScreen({ settings, onSave }) {
@@ -857,11 +946,17 @@ function StoreScreen({ settings, onSave }) {
     try { return JSON.parse(raw || '[]'); } catch { return [{ start: '12:00', end: '13:00' }]; }
   };
 
+  // 定休日（任意）をSet形式で管理
+  const parseClosedDates = (raw) => {
+    if (!raw) return new Set();
+    return new Set(raw.split(',').map(d => d.trim()).filter(Boolean));
+  };
+
   const [form, setForm] = useState({
     storeName:   settings['店舗名'] || '',
     storeEmail:  settings['店舗メール'] || '',
     closedDays:  (settings['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
-    closedDates: settings['定休日（任意）'] || '',
+    closedDatesSet: parseClosedDates(settings['定休日（任意）'] || ''),
     openStart:   settings['営業開始時刻'] || '09:00',
     openEnd:     settings['営業終了時刻'] || '18:00',
     breaks:      parseBreaks(settings['休憩時間']),
@@ -869,6 +964,7 @@ function StoreScreen({ settings, onSave }) {
     refreshSec:  String(settings['自動更新間隔（秒）'] || '30'),
   });
   const [saved, setSaved] = useState(false);
+  const [calDate, setCalDate] = useState(new Date()); // カレンダー表示月
 
   const toggleDay = (day) => {
     const arr = form.closedDays.includes(day)
@@ -888,7 +984,7 @@ function StoreScreen({ settings, onSave }) {
       '店舗名': form.storeName,
       '店舗メール': form.storeEmail,
       '定休曜日': form.closedDays.join(','),
-      '定休日（任意）': form.closedDates,
+      '定休日（任意）': [...form.closedDatesSet].sort().join(','),
       '営業開始時刻': form.openStart,
       '営業終了時刻': form.openEnd,
       '休憩時間': JSON.stringify(form.breaks),
@@ -922,11 +1018,23 @@ function StoreScreen({ settings, onSave }) {
             </div>
           </FormRow>
 
-          {/* 定休日（任意日付） */}
+          {/* 定休日（カレンダー選択） */}
           <FormRow label="定休日（任意日付）">
-            <input style={S.input} type="text" placeholder="例：2026-01-01,2026-01-02（カンマ区切り）"
-              value={form.closedDates} onChange={e => setForm(p=>({...p,closedDates:e.target.value}))} />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>祝日・臨時休業日をYYYY-MM-DD形式で入力</div>
+            <ClosedDateCalendar
+              closedDatesSet={form.closedDatesSet}
+              calDate={calDate}
+              onChangeCalDate={setCalDate}
+              onToggleDate={(dateStr) => {
+                const next = new Set(form.closedDatesSet);
+                next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr);
+                setForm(p => ({ ...p, closedDatesSet: next }));
+              }}
+            />
+            {form.closedDatesSet.size > 0 && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: C.muted }}>
+                選択中：{[...form.closedDatesSet].sort().join('、')}
+              </div>
+            )}
           </FormRow>
 
           {/* 営業時間 */}
@@ -989,7 +1097,7 @@ function StoreScreen({ settings, onSave }) {
         <Btn v="gray" onClick={() => setForm({
           storeName: settings['店舗名']||'', storeEmail: settings['店舗メール']||'',
           closedDays: (settings['定休曜日']||'日').split(',').map(d=>d.trim()).filter(Boolean),
-          closedDates: settings['定休日（任意）']||'',
+          closedDatesSet: parseClosedDates(settings['定休日（任意）']||''),
           openStart: settings['営業開始時刻']||'09:00', openEnd: settings['営業終了時刻']||'18:00',
           breaks: parseBreaks(settings['休憩時間']),
           unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30'),
