@@ -291,12 +291,37 @@ function CalMonth({ bookings, menuList, currentDate, onChangeDate, onSelectDay }
 // ============================================================
 // 日ビュー
 // ============================================================
-function CalDay({ bookings, staffList, menuList, currentDate, onChangeDate, onSelectBooking, onSelectEmpty }) {
+function CalDay({ bookings, staffList, menuList, settings, currentDate, onChangeDate, onSelectBooking, onSelectEmpty }) {
   const DAY = ['日','月','火','水','木','金','土'];
   const p = n => String(n).padStart(2, '0');
   const dateStr = `${currentDate.getFullYear()}-${p(currentDate.getMonth()+1)}-${p(currentDate.getDate())}`;
+
+  // 営業時間・休憩時間を設定から取得
+  const openStart = settings?.['営業開始時刻'] || '09:00';
+  const openEnd   = settings?.['営業終了時刻'] || '18:00';
+  const unitMin   = parseInt(settings?.['施術単位（分）'] || '30');
+  const breaks    = (() => { try { return JSON.parse(settings?.['休憩時間'] || '[]'); } catch { return []; } })();
+  const openH = parseInt(openStart.split(':')[0]), openM = parseInt(openStart.split(':')[1] || '0');
+  const closeH = parseInt(openEnd.split(':')[0]), closeM = parseInt(openEnd.split(':')[1] || '0');
+
+  // スロットを動的生成
   const slots = [];
-  for (let h = 9; h < 18; h++) { slots.push(`${p(h)}:00`); slots.push(`${p(h)}:30`); }
+  let cur = openH * 60 + openM;
+  const endMin = closeH * 60 + closeM;
+  while (cur < endMin) {
+    const h = Math.floor(cur / 60), m = cur % 60;
+    slots.push(`${p(h)}:${p(m)}`);
+    cur += unitMin;
+  }
+
+  // 休憩判定関数
+  const isBreak = (slot) => breaks.some(b => {
+    const [bsh, bsm] = b.start.split(':').map(Number);
+    const [beh, bem] = b.end.split(':').map(Number);
+    const [sh, sm] = slot.split(':').map(Number);
+    const t = sh * 60 + sm;
+    return t >= bsh * 60 + bsm && t < beh * 60 + bem;
+  });
 
   // 時刻を正規化してマッピング
   const bookingMap = {};
@@ -328,7 +353,7 @@ function CalDay({ bookings, staffList, menuList, currentDate, onChangeDate, onSe
         </thead>
         <tbody>
           {slots.map(slot => {
-            const inBreak = slot >= '12:00' && slot < '13:00';
+            const inBreak = isBreak(slot);
             return (
               <tr key={slot}>
                 <td style={S.dayTd('time')}>{slot}</td>
@@ -961,7 +986,6 @@ function StoreScreen({ settings, onSave }) {
     openEnd:     settings['営業終了時刻'] || '18:00',
     breaks:      parseBreaks(settings['休憩時間']),
     unitMin:     String(settings['施術単位（分）'] || '30'),
-    maxStaffPerUnit: String(settings['施術単位あたり最大施術者数'] || '1'),
     refreshSec:  String(settings['自動更新間隔（秒）'] || '30'),
   });
   const [saved, setSaved] = useState(false);
@@ -990,7 +1014,6 @@ function StoreScreen({ settings, onSave }) {
       '営業終了時刻': form.openEnd,
       '休憩時間': JSON.stringify(form.breaks),
       '施術単位（分）': form.unitMin,
-      '施術単位あたり最大施術者数': form.maxStaffPerUnit,
       '自動更新間隔（秒）': form.refreshSec,
     });
     setSaved(true);
@@ -1082,23 +1105,6 @@ function StoreScreen({ settings, onSave }) {
             </div>
           </FormRow>
 
-          {/* 施術単位あたり最大施術者数 */}
-          <FormRow label={`${form.unitMin}分あたり最大施術者数`}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <select style={{ ...S.input, width: 100 }} value={form.maxStaffPerUnit} onChange={e => setForm(p=>({...p,maxStaffPerUnit:e.target.value}))}>
-                <option value="1">1名</option>
-                <option value="2">2名</option>
-                <option value="3">3名</option>
-                <option value="unlimited">制限なし</option>
-              </select>
-              <div style={{ fontSize: 11, color: C.muted }}>
-                {form.maxStaffPerUnit === 'unlimited' 
-                  ? '同じ時間帯に複数の施術者が対応可能' 
-                  : `同時に${form.maxStaffPerUnit}名の施術者が対応可能`}
-              </div>
-            </div>
-          </FormRow>
-
           {/* 自動更新間隔 */}
           <FormRow label="予約画面 自動更新間隔">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
@@ -1119,9 +1125,7 @@ function StoreScreen({ settings, onSave }) {
           closedDatesSet: parseClosedDates(settings['定休日（任意）']||''),
           openStart: settings['営業開始時刻']||'09:00', openEnd: settings['営業終了時刻']||'18:00',
           breaks: parseBreaks(settings['休憩時間']),
-          unitMin: String(settings['施術単位（分）']||'30'),
-          maxStaffPerUnit: String(settings['施術単位あたり最大施術者数']||'1'),
-          refreshSec: String(settings['自動更新間隔（秒）']||'30'),
+          unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30'),
         })}>キャンセル</Btn>
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>確定</Btn>
       </div>
@@ -1135,21 +1139,61 @@ function StoreScreen({ settings, onSave }) {
 // ============================================================
 function MenuScreen({ menuList, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [newMenu, setNewMenu] = useState({ name: '', durationMin: '30' });
   const [saved, setSaved] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleAdd = async () => {
+    if (!newMenu.name) { alert('メニュー名を入力してください'); return; }
+    setLoading(true);
+    const res = await apiPost({ action: 'addMenu', name: newMenu.name, durationMin: newMenu.durationMin });
+    if (res.success) {
+      setSaved(`「${newMenu.name}」を追加しました`);
+      setTimeout(() => setSaved(''), 3000);
+      onRefresh();
+      setShowAdd(false);
+      setNewMenu({ name: '', durationMin: '30' });
+    } else {
+      alert('追加に失敗しました: ' + (res.error?.message || ''));
+    }
+    setLoading(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setLoading(true);
+    const res = await apiPost({ action: 'deleteMenu', menuId: deleteTarget.menuId });
+    if (res.success) {
+      setSaved(`「${deleteTarget.name}」を削除しました`);
+      setTimeout(() => setSaved(''), 3000);
+      onRefresh();
+    } else {
+      alert('削除に失敗しました: ' + (res.error?.message || ''));
+    }
+    setLoading(false);
+    setDeleteTarget(null);
+  };
 
   return (
     <div>
       <div style={S.pageHeader}><h2 style={S.pageTitle}>メニュー管理</h2></div>
-      <table style={{ ...S.gridTbl, maxWidth: 400 }}>
-        <thead><tr><th style={S.th}>メニュー名</th><th style={S.th}>所要時間</th></tr></thead>
+      <table style={{ ...S.gridTbl, maxWidth: 500 }}>
+        <thead><tr><th style={S.th}>メニュー名</th><th style={S.th}>所要時間</th><th style={S.th}>操作</th></tr></thead>
         <tbody>
-          {menuList.map(m => <tr key={m.menuId}><td style={S.td}>{m.name}</td><td style={S.td}>{m.durationMin}分</td></tr>)}
+          {menuList.map(m => (
+            <tr key={m.menuId}>
+              <td style={S.td}>{m.name}</td>
+              <td style={S.td}>{m.durationMin}分</td>
+              <td style={S.td}>
+                <Btn v="danger" style={{ fontSize: 11, padding: '3px 10px' }} onClick={() => setDeleteTarget(m)}>削除</Btn>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
       <div style={S.btnRow}>
-        <Btn v="primary" onClick={() => setShowAdd(true)}>メニューを追加</Btn>
-        <Btn v="danger" onClick={() => alert('メニューの削除はGoogle Sheetsの「メニュー」シートから直接削除してください。')}>メニューを削除</Btn>
+        <Btn v="primary" onClick={() => setShowAdd(true)}>＋ メニューを追加</Btn>
       </div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
 
@@ -1157,19 +1201,33 @@ function MenuScreen({ menuList, onRefresh }) {
         <Modal title="メニューを追加" onClose={() => setShowAdd(false)}>
           <table style={S.formTbl}>
             <tbody>
-              <FormRow label="メニュー名" required><input style={S.input} type="text" placeholder="例：深部組織マッサージ" value={newMenu.name} onChange={e => setNewMenu(p=>({...p,name:e.target.value}))} /></FormRow>
-              <FormRow label="所要時間（分）" required><input style={S.input} type="number" min="15" step="15" value={newMenu.durationMin} onChange={e => setNewMenu(p=>({...p,durationMin:e.target.value}))} /></FormRow>
+              <FormRow label="メニュー名" required>
+                <input style={S.input} type="text" placeholder="例：柔整" value={newMenu.name} onChange={e => setNewMenu(p=>({...p,name:e.target.value}))} />
+              </FormRow>
+              <FormRow label="メニューID">
+                <input style={S.input} type="text" placeholder="自動採番（空白でOK）" value={newMenu.menuId||''} onChange={e => setNewMenu(p=>({...p,menuId:e.target.value}))} />
+              </FormRow>
+              <FormRow label="所要時間（分）" required>
+                <input style={S.input} type="number" min="15" step="15" value={newMenu.durationMin} onChange={e => setNewMenu(p=>({...p,durationMin:e.target.value}))} />
+              </FormRow>
             </tbody>
           </table>
-          <div style={S.note('info')}>追加後はGoogle Sheetsの「メニュー」シートにも反映されます。</div>
           <div style={S.btnRow}>
             <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
-            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
-              if (!newMenu.name) return alert('メニュー名を入力してください');
-              setSaved(`「${newMenu.name}」を追加しました（Google Sheetsの「メニュー」シートにも追加してください）`);
-              setShowAdd(false);
-              setNewMenu({ name: '', durationMin: '30' });
-            }}>追加する</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleAdd}>{loading ? '追加中...' : '追加する'}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal title="メニューを削除" onClose={() => setDeleteTarget(null)}>
+          <p style={{ fontSize: 13, marginBottom: 16 }}>
+            <b>「{deleteTarget.name}」</b>を削除しますか？<br />
+            <span style={{ color: C.danger, fontSize: 12 }}>この操作は元に戻せません。</span>
+          </p>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setDeleteTarget(null)}>キャンセル</Btn>
+            <Btn v="danger" style={{ marginLeft: 'auto' }} onClick={handleDelete}>{loading ? '削除中...' : '削除する'}</Btn>
           </div>
         </Modal>
       )}
@@ -1180,10 +1238,129 @@ function MenuScreen({ menuList, onRefresh }) {
 // ============================================================
 // 利用者管理画面
 // ============================================================
+// ============================================================
+// メッセージ管理画面
+// ============================================================
+function MessageScreen({ userList }) {
+  const [sendMethod, setSendMethod] = useState('LINE'); // LINE / Email / 両方
+  const [targetType, setTargetType] = useState('individual'); // all / individual
+  const [selectedUser, setSelectedUser] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [sent, setSent] = useState('');
+
+  useEffect(() => {
+    apiGet({ action: 'getUserList', query: '' }).then(r => {
+      if (r.success) setUsers(r.data.users || []);
+    });
+  }, []);
+
+  const handleSend = async () => {
+    if (!message.trim()) { alert('メッセージを入力してください'); return; }
+    if (targetType === 'individual' && !selectedUser) { alert('送信先を選択してください'); return; }
+    setLoading(true);
+    const targets = targetType === 'all'
+      ? users.filter(u => sendMethod !== 'LINE' || u.lineUserId)
+      : users.filter(u => u.userId === selectedUser);
+
+    let successCount = 0;
+    for (const u of targets) {
+      if ((sendMethod === 'LINE' || sendMethod === '両方') && u.lineUserId) {
+        await apiPost({ action: 'sendLineMessage', lineUserId: u.lineUserId, message });
+        successCount++;
+      }
+      if ((sendMethod === 'Email' || sendMethod === '両方') && u.email) {
+        await apiPost({ action: 'sendEmailMessage', email: u.email, name: u.name, message });
+        successCount++;
+      }
+    }
+    setSent(`${successCount}件送信しました`);
+    setTimeout(() => setSent(''), 4000);
+    setMessage('');
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <div style={S.pageHeader}><h2 style={S.pageTitle}>メッセージ管理</h2></div>
+      <table style={S.formTbl}>
+        <tbody>
+          {/* 送信方法 */}
+          <FormRow label="メッセージ送信方法">
+            <div style={{ display: 'flex', gap: 20 }}>
+              {['LINE','E-mail','両方'].map(v => (
+                <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                  <input type="radio" name="sendMethod" checked={sendMethod === v} onChange={() => setSendMethod(v)} /> {v}
+                </label>
+              ))}
+            </div>
+            <div style={S.note('warn')}>💡 ラジオボタン（排他選択）。いずれか一つを選択してください。</div>
+          </FormRow>
+
+          {/* 送信先 */}
+          <FormRow label="メッセージ送信先">
+            <div style={{ display: 'flex', gap: 20, marginBottom: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                <input type="radio" name="targetType" checked={targetType === 'all'} onChange={() => setTargetType('all')} /> 利用者全員
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                <input type="radio" name="targetType" checked={targetType === 'individual'} onChange={() => setTargetType('individual')} /> 個別
+              </label>
+            </div>
+            {targetType === 'individual' && (
+              <div>
+                <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
+                  {sendMethod !== 'Email' ? '■ LINE：利用者管理画面のLINE IDを表示・選択' : '■ E-mail：利用者管理画面のE-Mailを表示・選択'}
+                </div>
+                <select style={S.input} value={selectedUser} onChange={e => setSelectedUser(e.target.value)}>
+                  <option value="">選択してください</option>
+                  {users
+                    .filter(u => sendMethod === 'Email' ? u.email : u.lineUserId)
+                    .map(u => (
+                      <option key={u.userId} value={u.userId}>
+                        {u.name}（{sendMethod === 'Email' ? u.email : u.lineUserId}）
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+          </FormRow>
+
+          {/* メッセージ内容 */}
+          <FormRow label="メッセージ内容">
+            <textarea
+              style={{ ...S.input, height: 120, resize: 'vertical' }}
+              placeholder="メッセージを入力してください"
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+            />
+          </FormRow>
+        </tbody>
+      </table>
+
+      <div style={S.note('warn')}>💡 送信後、登録されている管理者のE-Mailアドレスにもコピーが送信されます。</div>
+
+      <div style={S.btnRow}>
+        <Btn v="gray" onClick={() => { setMessage(''); setSelectedUser(''); }}>リセット</Btn>
+        <Btn v="gray" onClick={() => setMessage('')}>キャンセル</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSend}>
+          {loading ? '送信中...' : '送信'}
+        </Btn>
+      </div>
+      {sent && <div style={S.note('success')}>✅ {sent}</div>}
+    </div>
+  );
+}
+
 function UsersScreen() {
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newUser, setNewUser] = useState({ userId: '', name: '', nameKana: '', lineUserId: '', email: '' });
+  const [saved, setSaved] = useState('');
+  const [addLoading, setAddLoading] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -1194,13 +1371,39 @@ function UsersScreen() {
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
+  const handleAddUser = async () => {
+    if (!newUser.name || !newUser.nameKana) { alert('氏名とふりがなは必須です'); return; }
+    setAddLoading(true);
+    const res = await apiPost({
+      action: 'addUserByAdmin',
+      userId: newUser.userId || undefined,
+      name: newUser.name,
+      nameKana: newUser.nameKana,
+      lineUserId: newUser.lineUserId || '',
+      email: newUser.email || '',
+    });
+    if (res.success) {
+      setSaved(`「${newUser.name}」を登録しました`);
+      setTimeout(() => setSaved(''), 3000);
+      fetchUsers();
+      setShowAdd(false);
+      setNewUser({ userId: '', name: '', nameKana: '', lineUserId: '', email: '' });
+    } else {
+      alert('登録に失敗しました: ' + (res.error?.message || ''));
+    }
+    setAddLoading(false);
+  };
+
   return (
     <div>
       <div style={S.pageHeader}>
         <h2 style={S.pageTitle}>利用者管理</h2>
-        <input style={{ ...S.input, width: 220 }} type="text" placeholder="氏名・メール・電話で検索" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchUsers()} />
+        <input style={{ ...S.input, width: 220 }} type="text" placeholder="氏名・メール・電話で検索"
+          value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchUsers()} />
         <Btn v="primary" onClick={fetchUsers}>検索</Btn>
+        <Btn v="success" style={{ marginLeft: 'auto' }} onClick={() => setShowAdd(true)}>＋ 利用者を追加</Btn>
       </div>
+      {saved && <div style={S.note('success')}>✅ {saved}</div>}
       {loading ? <p>読み込み中...</p> : (
         <table style={S.gridTbl}>
           <thead>
@@ -1221,6 +1424,41 @@ function UsersScreen() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {showAdd && (
+        <Modal title="利用者を追加" onClose={() => setShowAdd(false)}>
+          <table style={S.formTbl}>
+            <tbody>
+              <FormRow label="利用者ID">
+                <input style={S.input} type="text" placeholder="自動採番（空白でOK）"
+                  value={newUser.userId} onChange={e => setNewUser(p=>({...p,userId:e.target.value}))} />
+              </FormRow>
+              <FormRow label="氏名" required>
+                <input style={S.input} type="text" placeholder="横浜　太郎"
+                  value={newUser.name} onChange={e => setNewUser(p=>({...p,name:e.target.value}))} />
+              </FormRow>
+              <FormRow label="氏名（ふりがな）" required>
+                <input style={S.input} type="text" placeholder="よこはま　たろう"
+                  value={newUser.nameKana} onChange={e => setNewUser(p=>({...p,nameKana:e.target.value}))} />
+              </FormRow>
+              <FormRow label="LINE ID">
+                <input style={S.input} type="text" placeholder="LINE連携時に自動入力（任意）"
+                  value={newUser.lineUserId} onChange={e => setNewUser(p=>({...p,lineUserId:e.target.value}))} />
+              </FormRow>
+              <FormRow label="E-Mail">
+                <input style={S.input} type="email" placeholder="手入力（任意）"
+                  value={newUser.email} onChange={e => setNewUser(p=>({...p,email:e.target.value}))} />
+              </FormRow>
+            </tbody>
+          </table>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleAddUser}>
+              {addLoading ? '登録中...' : '確定（当月に反映）'}
+            </Btn>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -1306,7 +1544,7 @@ export default function AdminDashboard() {
               <CalMonth bookings={bookings} menuList={menuList} currentDate={currentDate}
                 onChangeDate={setCurrentDate} onSelectDay={d => { setCurrentDate(d); setViewMode('day'); }} />
             ) : (
-              <CalDay bookings={bookings} staffList={staffList} menuList={menuList} currentDate={currentDate}
+              <CalDay bookings={bookings} staffList={staffList} menuList={menuList} settings={settings} currentDate={currentDate}
                 onChangeDate={setCurrentDate} onSelectBooking={setSelectedBooking}
                 onSelectEmpty={(date, slot, staffId) => setNewBookingInfo({ date, slot, staffId })} />
             )}
@@ -1316,7 +1554,7 @@ export default function AdminDashboard() {
       case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} bookings={bookings} onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))} />;
       case 'store':   return <StoreScreen settings={settings} onSave={handleSaveSettings} />;
       case 'menu':    return <MenuScreen menuList={menuList} onRefresh={() => apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus))} />;
-      case 'message': return <div style={S.pageHeader}><h2 style={S.pageTitle}>メッセージ管理</h2></div>;
+      case 'message': return <MessageScreen users={[]} />;
       case 'users':   return <UsersScreen />;
       case 'inquiry': return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
       default: return null;
