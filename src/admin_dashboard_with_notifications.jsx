@@ -1977,8 +1977,18 @@ export default function AdminDashboard() {
     fetchBookings();
   };
   const handleSaveSettings = async (updates) => {
-    await apiPost({ action: 'updateSettings', settings: updates });
-    setSettings(prev => ({ ...prev, ...updates }));
+    const res = await apiPost({ action: 'updateSettings', settings: updates });
+    if (res.success) {
+      // 保存後にGoogle Sheetsから最新設定を再取得して確実に同期する
+      const fresh = await apiGet({ action: 'getSettings' });
+      if (fresh.success) {
+        setSettings(fresh.data.settings);
+      } else {
+        setSettings(prev => ({ ...prev, ...updates }));
+      }
+    } else {
+      alert('設定の保存に失敗しました: ' + (res.error?.message || ''));
+    }
   };
 
   if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
