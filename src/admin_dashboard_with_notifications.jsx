@@ -7,13 +7,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 const GAS_URL = import.meta.env.VITE_GAS_URL || '';
 
 const NAV_ITEMS = [
-  { key: 'booking', label: '予約管理画面' },
-  { key: 'staff',   label: '施術者管理画面' },
-  { key: 'store',   label: '店舗管理画面' },
-  { key: 'menu',    label: 'メニュー管理画面' },
-  { key: 'message', label: 'メッセージ管理画面' },
-  { key: 'users',   label: '利用者管理画面' },
-  { key: 'inquiry', label: '問い合わせ' },
+  { key: 'booking',    label: '予約管理画面' },
+  { key: 'staff',      label: '施術者管理画面' },
+  { key: 'store',      label: '店舗管理画面' },
+  { key: 'menu',       label: 'メニュー管理画面' },
+  { key: 'message',    label: 'メッセージ管理画面' },
+  { key: 'users',      label: '利用者管理画面' },
+  { key: 'reminder',   label: 'リマインダー設定' },
+  { key: 'csv',        label: 'CSVエクスポート' },
+  { key: 'shift',      label: 'シフト手動設定' },
+  { key: 'inquiry',    label: '問い合わせ' },
 ];
 
 // ============================================================
@@ -977,19 +980,28 @@ function StoreScreen({ settings, onSave }) {
     return new Set(raw.split(',').map(d => d.trim()).filter(Boolean));
   };
 
-  const [form, setForm] = useState({
-    storeName:   settings['店舗名'] || '',
-    storeEmail:  settings['店舗メール'] || '',
-    closedDays:  (settings['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
-    closedDatesSet: parseClosedDates(settings['定休日（任意）'] || ''),
-    openStart:   settings['営業開始時刻'] || '09:00',
-    openEnd:     settings['営業終了時刻'] || '18:00',
-    breaks:      parseBreaks(settings['休憩時間']),
-    unitMin:     String(settings['施術単位（分）'] || '30'),
-    refreshSec:  String(settings['自動更新間隔（秒）'] || '30'),
+  const buildForm = (s) => ({
+    storeName:      s['店舗名'] || '',
+    storeEmail:     s['店舗メール'] || '',
+    closedDays:     (s['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
+    closedDatesSet: parseClosedDates(s['定休日（任意）'] || ''),
+    openStart:      s['営業開始時刻'] || '09:00',
+    openEnd:        s['営業終了時刻'] || '18:00',
+    breaks:         parseBreaks(s['休憩時間']),
+    unitMin:        String(s['施術単位（分）'] || '30'),
+    refreshSec:     String(s['自動更新間隔（秒）'] || '30'),
   });
+
+  const [form, setForm] = useState(() => buildForm(settings));
   const [saved, setSaved] = useState(false);
-  const [calDate, setCalDate] = useState(new Date()); // カレンダー表示月
+  const [calDate, setCalDate] = useState(new Date());
+
+  // settingsがロード・更新されたらformに反映する
+  useEffect(() => {
+    if (settings && Object.keys(settings).length > 0) {
+      setForm(buildForm(settings));
+    }
+  }, [settings]);
 
   const toggleDay = (day) => {
     const arr = form.closedDays.includes(day)
@@ -1238,6 +1250,373 @@ function MenuScreen({ menuList, onRefresh }) {
 // ============================================================
 // 利用者管理画面
 // ============================================================
+// ============================================================
+// リマインダー通知設定画面
+// ============================================================
+function ReminderScreen({ settings, onSave }) {
+  const parseReminder = (raw) => { try { return JSON.parse(raw || '{}'); } catch { return {}; } };
+  const buildForm = (s) => {
+    const r = parseReminder(s['リマインダー設定'] || '{}');
+    return {
+      onConfirm:    r.onConfirm    !== false,
+      prevDay:      r.prevDay      !== false,
+      prevDayTime:  r.prevDayTime  || '18:00',
+      sameDay:      r.sameDay      || false,
+      sameDayTime:  r.sameDayTime  || '08:00',
+      onCancel:     r.onCancel     || false,
+      useLine:      r.useLine      !== false,
+      useEmail:     r.useEmail     !== false,
+    };
+  };
+  const [form, setForm] = useState(() => buildForm(settings));
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (settings && Object.keys(settings).length > 0) setForm(buildForm(settings));
+  }, [settings]);
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const TIMES = [];
+  for (let h = 0; h < 24; h++) { TIMES.push(`${String(h).padStart(2,'0')}:00`); }
+
+  const items = [
+    { key: 'onConfirm', label: '予約確定時に即座に通知', desc: '予約が確定されると同時にLINE / E-Mailで通知を送信します。', hasTime: false },
+    { key: 'prevDay',   label: '前日リマインダー', desc: '予約日の前日、指定時刻に自動送信します。', hasTime: true, timeKey: 'prevDayTime' },
+    { key: 'sameDay',   label: '当日リマインダー', desc: '予約当日の朝、指定時刻に自動送信します。', hasTime: true, timeKey: 'sameDayTime' },
+    { key: 'onCancel',  label: 'キャンセル通知', desc: '予約取り消し時に利用者へ通知します。', hasTime: false },
+  ];
+
+  return (
+    <div>
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>🔔 リマインダー通知設定</h2>
+        <span style={S.badge('green')}>NEW</span>
+      </div>
+      <div style={S.note('info')}>
+        💡 予約確定後に自動でリマインダーを送信します。LINE / E-Mail の両方に対応。送信先は予約の利用者IDに紐づく連絡先が使われます。
+      </div>
+
+      {/* 送信タイミング */}
+      <div style={{ ...S.card, marginTop: 16 }}>
+        <div style={S.sectionTitle}>リマインダー送信タイミング</div>
+        {items.map(item => (
+          <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
+            {/* トグルスイッチ */}
+            <div onClick={() => set(item.key, !form[item.key])}
+              style={{ width: 44, height: 24, borderRadius: 12, background: form[item.key] ? C.success : '#cbd5e1', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
+              <div style={{ position: 'absolute', top: 2, left: form[item.key] ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{item.label}</div>
+              <div style={{ fontSize: 11.5, color: C.muted }}>{item.desc}</div>
+            </div>
+            {item.hasTime && (
+              <select style={{ ...S.input, width: 90 }} value={form[item.timeKey]} disabled={!form[item.key]}
+                onChange={e => set(item.timeKey, e.target.value)}>
+                {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            <span style={{ ...S.badge(form[item.key] ? 'green' : 'gray'), minWidth: 30, textAlign: 'center' }}>
+              {form[item.key] ? '有効' : '無効'}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* 通知送信方法 */}
+      <div style={S.card}>
+        <div style={S.sectionTitle}>通知送信方法</div>
+        <div style={{ display: 'flex', gap: 24 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5 }}>
+            <input type="checkbox" checked={form.useLine} onChange={e => set('useLine', e.target.checked)} /> LINE
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5 }}>
+            <input type="checkbox" checked={form.useEmail} onChange={e => set('useEmail', e.target.checked)} /> E-Mail
+          </label>
+        </div>
+        <div style={S.note('warn')}>💡 LINEまたはE-Mailが未登録の利用者には該当手段をスキップします。</div>
+      </div>
+
+      <div style={S.btnRow}>
+        <Btn v="gray" onClick={() => setForm(buildForm(settings))}>キャンセル</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
+          await onSave({ 'リマインダー設定': JSON.stringify(form) });
+          setSaved(true); setTimeout(() => setSaved(false), 3000);
+        }}>保存</Btn>
+      </div>
+      {saved && <div style={S.note('success')}>✅ リマインダー設定を保存しました</div>}
+    </div>
+  );
+}
+
+// ============================================================
+// CSVエクスポート画面
+// ============================================================
+function CsvExportScreen({ bookings, staffList, menuList }) {
+  const today = new Date();
+  const p = n => String(n).padStart(2,'0');
+  const fmt = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const [filters, setFilters] = useState({
+    startDate: fmt(firstDay), endDate: fmt(today),
+    staffId: '', menuId: '', status: '',
+  });
+  const [cols, setCols] = useState({
+    datetime: true, userId: true, userName: true, menuName: true,
+    staffName: true, lineUserId: false, email: false, status: true, note: false,
+  });
+
+  const setF = (k, v) => setFilters(p => ({ ...p, [k]: v }));
+  const toggleCol = (k) => setCols(p => ({ ...p, [k]: !p[k] }));
+
+  // フィルタ適用
+  const filtered = bookings.filter(b => {
+    const d = b.datetime?.split(' ')[0] || '';
+    if (filters.startDate && d < filters.startDate) return false;
+    if (filters.endDate   && d > filters.endDate)   return false;
+    if (filters.staffId   && b.staffId !== filters.staffId) return false;
+    if (filters.menuId    && b.menuId  !== filters.menuId)  return false;
+    if (filters.status    && b.status  !== filters.status)  return false;
+    return true;
+  });
+
+  const COL_DEFS = [
+    { key: 'datetime',  label: '予約日時',   get: b => b.datetime || '' },
+    { key: 'userId',    label: '利用者ID',   get: b => b.lineUserId || '' },
+    { key: 'userName',  label: '利用者氏名', get: b => b.userName || '' },
+    { key: 'menuName',  label: 'コース名',   get: b => menuList.find(m => m.menuId === b.menuId)?.name || b.menuId },
+    { key: 'staffName', label: '担当施術者', get: b => staffList.find(s => s.staffId === b.staffId)?.name || b.staffId },
+    { key: 'lineUserId',label: 'LINE ID',   get: b => b.lineUserId || '' },
+    { key: 'email',     label: 'E-Mail',    get: b => b.userEmail || '' },
+    { key: 'status',    label: 'ステータス', get: b => b.status || '' },
+    { key: 'note',      label: '要望/備考', get: b => b.note || '' },
+  ];
+
+  const activeCols = COL_DEFS.filter(c => cols[c.key]);
+
+  const downloadCsv = (encoding) => {
+    const header = activeCols.map(c => c.label).join(',');
+    const rows = filtered.map(b => activeCols.map(c => `"${c.get(b).toString().replace(/"/g,'""')}"`).join(','));
+    const csv = [header, ...rows].join('\n');
+    const bom = encoding === 'sjis' ? '\uFEFF' : '';
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `予約データ_${filters.startDate}_${filters.endDate}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div>
+      <div style={S.pageHeader}><h2 style={S.pageTitle}>📊 CSVエクスポート</h2></div>
+
+      {/* フィルタ */}
+      <div style={S.card}>
+        <div style={S.sectionTitle}>絞り込み条件</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>開始日</div>
+            <input style={S.input} type="date" value={filters.startDate} onChange={e => setF('startDate', e.target.value)} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>終了日</div>
+            <input style={S.input} type="date" value={filters.endDate} onChange={e => setF('endDate', e.target.value)} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>施術者</div>
+            <select style={S.input} value={filters.staffId} onChange={e => setF('staffId', e.target.value)}>
+              <option value="">全員</option>
+              {staffList.map(s => <option key={s.staffId} value={s.staffId}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>コース</div>
+            <select style={S.input} value={filters.menuId} onChange={e => setF('menuId', e.target.value)}>
+              <option value="">全て</option>
+              {menuList.map(m => <option key={m.menuId} value={m.menuId}>{m.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>ステータス</div>
+            <select style={S.input} value={filters.status} onChange={e => setF('status', e.target.value)}>
+              <option value="">全て</option>
+              <option value="確定">確定</option>
+              <option value="キャンセル">キャンセル</option>
+              <option value="保留">保留</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 出力項目選択 */}
+      <div style={S.card}>
+        <div style={S.sectionTitle}>出力項目の選択</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {COL_DEFS.map(c => (
+            <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+              <input type="checkbox" checked={cols[c.key]} onChange={() => toggleCol(c.key)} /> {c.label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* プレビュー */}
+      <div style={S.card}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={S.sectionTitle}>プレビュー（上位5件）</div>
+          <span style={S.badge('blue')}>合計：{filtered.length}件</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={S.gridTbl}>
+            <thead><tr>{activeCols.map(c => <th key={c.key} style={S.th}>{c.label}</th>)}</tr></thead>
+            <tbody>
+              {filtered.slice(0, 5).map((b, i) => (
+                <tr key={i}>{activeCols.map(c => (
+                  <td key={c.key} style={S.td}>
+                    {c.key === 'status' ? (
+                      <span style={S.badge(b.status === '確定' ? 'green' : b.status === 'キャンセル' ? 'gray' : 'blue')}>{b.status}</span>
+                    ) : c.get(b)}
+                  </td>
+                ))}</tr>
+              ))}
+              {filtered.length === 0 && <tr><td colSpan={activeCols.length} style={{ ...S.td, textAlign: 'center', color: C.muted }}>データがありません</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={S.btnRow}>
+        <Btn v="gray" onClick={() => downloadCsv('utf8')}>UTF-8でダウンロード</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => downloadCsv('sjis')}>
+          📥 CSVダウンロード（Shift-JIS / Excel対応）
+        </Btn>
+      </div>
+      <div style={S.note('info')}>💡 文字コードはShift-JIS（Excel対応）でエクスポートします。UTF-8に切り替えも可能です。</div>
+    </div>
+  );
+}
+
+// ============================================================
+// シフト手動設定画面
+// ============================================================
+function ShiftScreen({ staffList, settings }) {
+  const [calDate, setCalDate] = useState(new Date());
+  const [selectedStaff, setSelectedStaff] = useState(staffList[0]?.staffId || '');
+  const [shifts, setShifts] = useState({}); // { 'YYYY-MM-DD': { type, start, end } }
+  const [saved, setSaved] = useState('');
+
+  const DAY = ['日','月','火','水','木','金','土'];
+  const p = n => String(n).padStart(2,'0');
+  const year = calDate.getFullYear(), month = calDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const today = new Date();
+
+  // 月が変わったらシフトをリセット
+  useEffect(() => { setShifts({}); }, [calDate, selectedStaff]);
+
+  // 週を生成
+  const weeks = [];
+  let day = 1 - firstDay;
+  while (day <= daysInMonth) {
+    const week = [];
+    for (let i = 0; i < 7; i++, day++) week.push(day > 0 && day <= daysInMonth ? day : null);
+    weeks.push(week);
+  }
+
+  const TYPES = { off: '休み', am: '午前', pm: '午後', full: '終日', custom: '任意' };
+  const TYPE_COLORS = { off: '#f8fafc', am: '#eff6ff', pm: '#ecfdf5', full: C.primaryPale, custom: '#fef9c3' };
+
+  const toggleShift = (dateStr) => {
+    const cur = shifts[dateStr]?.type || 'off';
+    const order = ['off', 'am', 'pm', 'full', 'custom'];
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    setShifts(p => ({ ...p, [dateStr]: { type: next, start: '09:00', end: '18:00' } }));
+  };
+
+  return (
+    <div>
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>📅 シフト手動設定</h2>
+      </div>
+
+      {/* 施術者選択 */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>施術者：</span>
+        {staffList.map(s => (
+          <Btn key={s.staffId} v={selectedStaff === s.staffId ? 'primary' : 'outline'}
+            style={{ fontSize: 12 }} onClick={() => setSelectedStaff(s.staffId)}>
+            {s.name}
+          </Btn>
+        ))}
+      </div>
+
+      {/* 月ナビゲーション */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <Btn v="primary" style={{ fontSize: 12 }} onClick={() => setCalDate(new Date())}>今月</Btn>
+        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
+          onClick={() => setCalDate(new Date(year, month - 1, 1))}>≪</button>
+        <span style={{ fontSize: 15, fontWeight: 700, minWidth: 100, textAlign: 'center' }}>{year}年{month+1}月</span>
+        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
+          onClick={() => setCalDate(new Date(year, month + 1, 1))}>≫</button>
+        <span style={{ fontSize: 12, color: C.muted, marginLeft: 8 }}>シフト手動設定</span>
+      </div>
+
+      {/* 凡例 */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        {Object.entries(TYPES).map(([t, l]) => (
+          <span key={t} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: TYPE_COLORS[t], border: `1px solid ${C.border}` }}>{l}</span>
+        ))}
+        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで切り替え</span>
+      </div>
+
+      {/* カレンダー */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
+        <thead>
+          <tr>{DAY.map((d, i) => (
+            <th key={d} style={{ background: i===0?'#b91c1c':i===6?'#1d4ed8':C.primary, color:'#fff', padding:'6px 4px', textAlign:'center', fontSize:12 }}>{d}</th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {weeks.map((week, wi) => (
+            <tr key={wi}>
+              {week.map((d, di) => {
+                if (!d) return <td key={di} style={{ border: `1px solid ${C.border}`, height: 64 }} />;
+                const dateStr = `${year}-${p(month+1)}-${p(d)}`;
+                const shift = shifts[dateStr];
+                const t = shift?.type || 'off';
+                const isToday = year===today.getFullYear() && month===today.getMonth() && d===today.getDate();
+                return (
+                  <td key={di} onClick={() => toggleShift(dateStr)}
+                    style={{ border:`1px solid ${C.border}`, height:64, verticalAlign:'top', padding:4, cursor:'pointer', background: TYPE_COLORS[t], outline: isToday?`2px solid ${C.primary}`:'none' }}>
+                    <div style={{ fontSize:12, fontWeight:700, color: di===0?'#b91c1c':di===6?'#1d4ed8':C.muted }}>{d}</div>
+                    {t !== 'off' && (
+                      <div style={{ fontSize:10.5, marginTop:2, color: C.primary, fontWeight:600 }}>
+                        {staffList.find(s=>s.staffId===selectedStaff)?.name}：{TYPES[t]}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={S.btnRow}>
+        <Btn v="gray" onClick={() => setShifts({})}>リセット</Btn>
+        <Btn v="gray" onClick={() => setShifts({})}>キャンセル</Btn>
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
+          setSaved(`${staffList.find(s=>s.staffId===selectedStaff)?.name}のシフトを保存しました`);
+          setTimeout(() => setSaved(''), 3000);
+        }}>確定</Btn>
+      </div>
+      {saved && <div style={S.note('success')}>✅ {saved}</div>}
+    </div>
+  );
+}
+
 // ============================================================
 // メッセージ管理画面
 // ============================================================
@@ -1633,7 +2012,10 @@ export default function AdminDashboard() {
       case 'menu':    return <MenuScreen menuList={menuList} onRefresh={() => apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus))} />;
       case 'message': return <MessageScreen users={[]} />;
       case 'users':   return <UsersScreen />;
-      case 'inquiry': return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
+      case 'reminder':  return <ReminderScreen settings={settings} onSave={handleSaveSettings} />;
+      case 'csv':       return <CsvExportScreen bookings={bookings} staffList={staffList} menuList={menuList} />;
+      case 'shift':     return <ShiftScreen staffList={staffList} settings={settings} />;
+      case 'inquiry':   return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
       default: return null;
     }
   };
