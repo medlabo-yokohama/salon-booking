@@ -1242,13 +1242,14 @@ function MenuScreen({ menuList, onRefresh }) {
 // メッセージ管理画面
 // ============================================================
 function MessageScreen({ userList }) {
-  const [sendMethod, setSendMethod] = useState('LINE'); // LINE / Email / 両方
-  const [targetType, setTargetType] = useState('individual'); // all / individual
-  const [selectedUser, setSelectedUser] = useState('');
+  const [sendMethod, setSendMethod] = useState('LINE');
+  const [targetType, setTargetType] = useState('individual');
+  const [selectedUsers, setSelectedUsers] = useState(new Set()); // 複数選択対応
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [sent, setSent] = useState('');
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     apiGet({ action: 'getUserList', query: '' }).then(r => {
@@ -1256,21 +1257,43 @@ function MessageScreen({ userList }) {
     });
   }, []);
 
+  // 送信方法に応じて表示する利用者をフィルタ
+  const filteredUsers = users.filter(u => {
+    const hasLine = !!u.lineUserId;
+    const hasEmail = !!u.email;
+    if (sendMethod === 'LINE') return hasLine;
+    if (sendMethod === 'E-mail') return hasEmail;
+    if (sendMethod === '両方') return hasLine || hasEmail;
+    return true;
+  }).filter(u => !query || u.name.includes(query) || (u.email||'').includes(query));
+
+  const toggleUser = (userId) => {
+    const next = new Set(selectedUsers);
+    next.has(userId) ? next.delete(userId) : next.add(userId);
+    setSelectedUsers(next);
+  };
+
+  const toggleAll = () => {
+    if (selectedUsers.size === filteredUsers.length) {
+      setSelectedUsers(new Set());
+    } else {
+      setSelectedUsers(new Set(filteredUsers.map(u => u.userId)));
+    }
+  };
+
   const handleSend = async () => {
     if (!message.trim()) { alert('メッセージを入力してください'); return; }
-    if (targetType === 'individual' && !selectedUser) { alert('送信先を選択してください'); return; }
+    const targets = targetType === 'all' ? filteredUsers : filteredUsers.filter(u => selectedUsers.has(u.userId));
+    if (targets.length === 0) { alert('送信先を選択してください'); return; }
+    if (!window.confirm(`${targets.length}名にメッセージを送信しますか？`)) return;
     setLoading(true);
-    const targets = targetType === 'all'
-      ? users.filter(u => sendMethod !== 'LINE' || u.lineUserId)
-      : users.filter(u => u.userId === selectedUser);
-
     let successCount = 0;
     for (const u of targets) {
       if ((sendMethod === 'LINE' || sendMethod === '両方') && u.lineUserId) {
         await apiPost({ action: 'sendLineMessage', lineUserId: u.lineUserId, message });
         successCount++;
       }
-      if ((sendMethod === 'Email' || sendMethod === '両方') && u.email) {
+      if ((sendMethod === 'E-mail' || sendMethod === '両方') && u.email) {
         await apiPost({ action: 'sendEmailMessage', email: u.email, name: u.name, message });
         successCount++;
       }
@@ -1278,8 +1301,18 @@ function MessageScreen({ userList }) {
     setSent(`${successCount}件送信しました`);
     setTimeout(() => setSent(''), 4000);
     setMessage('');
+    setSelectedUsers(new Set());
     setLoading(false);
   };
+
+  // バッジ表示ヘルパー
+  const contactBadge = (u) => (
+    <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      {u.lineUserId && <span style={S.badge('green')}>LINE</span>}
+      {u.email && <span style={S.badge('blue')}>Email</span>}
+      {!u.lineUserId && !u.email && <span style={S.badge('gray')}>未登録</span>}
+    </span>
+  );
 
   return (
     <div>
@@ -1291,7 +1324,8 @@ function MessageScreen({ userList }) {
             <div style={{ display: 'flex', gap: 20 }}>
               {['LINE','E-mail','両方'].map(v => (
                 <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="radio" name="sendMethod" checked={sendMethod === v} onChange={() => setSendMethod(v)} /> {v}
+                  <input type="radio" name="sendMethod" checked={sendMethod === v}
+                    onChange={() => { setSendMethod(v); setSelectedUsers(new Set()); }} /> {v}
                 </label>
               ))}
             </div>
@@ -1302,39 +1336,82 @@ function MessageScreen({ userList }) {
           <FormRow label="メッセージ送信先">
             <div style={{ display: 'flex', gap: 20, marginBottom: 10 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                <input type="radio" name="targetType" checked={targetType === 'all'} onChange={() => setTargetType('all')} /> 利用者全員
+                <input type="radio" name="targetType" checked={targetType === 'all'}
+                  onChange={() => { setTargetType('all'); setSelectedUsers(new Set()); }} /> 利用者全員
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                <input type="radio" name="targetType" checked={targetType === 'individual'} onChange={() => setTargetType('individual')} /> 個別
+                <input type="radio" name="targetType" checked={targetType === 'individual'}
+                  onChange={() => setTargetType('individual')} /> 個別選択
               </label>
             </div>
+
+            {/* 利用者一覧テーブル（個別選択時） */}
             {targetType === 'individual' && (
-              <div>
-                <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
-                  {sendMethod !== 'Email' ? '■ LINE：利用者管理画面のLINE IDを表示・選択' : '■ E-mail：利用者管理画面のE-Mailを表示・選択'}
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
+                {/* 検索・全選択バー */}
+                <div style={{ display: 'flex', gap: 8, padding: 8, background: '#f8fafc', borderBottom: `1px solid ${C.border}` }}>
+                  <input style={{ ...S.input, flex: 1, fontSize: 12 }} type="text" placeholder="氏名・メールで絞り込み"
+                    value={query} onChange={e => setQuery(e.target.value)} />
+                  <Btn v="gray" style={{ fontSize: 11, padding: '3px 10px', whiteSpace: 'nowrap' }} onClick={toggleAll}>
+                    {selectedUsers.size === filteredUsers.length && filteredUsers.length > 0 ? '全解除' : '全選択'}
+                  </Btn>
+                  <span style={{ fontSize: 11.5, color: C.muted, alignSelf: 'center', whiteSpace: 'nowrap' }}>
+                    {selectedUsers.size}名選択中
+                  </span>
                 </div>
-                <select style={S.input} value={selectedUser} onChange={e => setSelectedUser(e.target.value)}>
-                  <option value="">選択してください</option>
-                  {users
-                    .filter(u => sendMethod === 'Email' ? u.email : u.lineUserId)
-                    .map(u => (
-                      <option key={u.userId} value={u.userId}>
-                        {u.name}（{sendMethod === 'Email' ? u.email : u.lineUserId}）
-                      </option>
-                    ))}
-                </select>
+
+                {/* 送信方法の説明 */}
+                <div style={{ padding: '4px 10px', background: '#eff6ff', fontSize: 11, color: C.primary, borderBottom: `1px solid ${C.border}` }}>
+                  {sendMethod === 'LINE' && '✅ LINE登録済みの利用者のみ表示'}
+                  {sendMethod === 'E-mail' && '✅ メール登録済みの利用者のみ表示'}
+                  {sendMethod === '両方' && '✅ LINE・メール・両方いずれかが登録済みの利用者を表示'}
+                </div>
+
+                {/* 利用者リスト */}
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                  {filteredUsers.length === 0 ? (
+                    <div style={{ padding: 16, textAlign: 'center', color: C.muted, fontSize: 12.5 }}>
+                      該当する利用者がいません
+                    </div>
+                  ) : filteredUsers.map(u => (
+                    <div key={u.userId}
+                      onClick={() => toggleUser(u.userId)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                        borderBottom: `1px solid ${C.border}`, cursor: 'pointer',
+                        background: selectedUsers.has(u.userId) ? C.primaryPale : '#fff',
+                        transition: 'background 0.1s',
+                      }}>
+                      <input type="checkbox" checked={selectedUsers.has(u.userId)}
+                        onChange={() => toggleUser(u.userId)}
+                        onClick={e => e.stopPropagation()} style={{ cursor: 'pointer' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: selectedUsers.has(u.userId) ? 700 : 400 }}>{u.name}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{u.nameKana}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', minWidth: 140 }}>
+                        {u.email && <div>{u.email}</div>}
+                      </div>
+                      {contactBadge(u)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 全員選択時の対象人数表示 */}
+            {targetType === 'all' && (
+              <div style={{ ...S.note('info'), marginTop: 6 }}>
+                対象：{filteredUsers.length}名（{sendMethod}登録済みの全利用者）
               </div>
             )}
           </FormRow>
 
           {/* メッセージ内容 */}
           <FormRow label="メッセージ内容">
-            <textarea
-              style={{ ...S.input, height: 120, resize: 'vertical' }}
+            <textarea style={{ ...S.input, height: 120, resize: 'vertical' }}
               placeholder="メッセージを入力してください"
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-            />
+              value={message} onChange={e => setMessage(e.target.value)} />
           </FormRow>
         </tbody>
       </table>
@@ -1342,7 +1419,7 @@ function MessageScreen({ userList }) {
       <div style={S.note('warn')}>💡 送信後、登録されている管理者のE-Mailアドレスにもコピーが送信されます。</div>
 
       <div style={S.btnRow}>
-        <Btn v="gray" onClick={() => { setMessage(''); setSelectedUser(''); }}>リセット</Btn>
+        <Btn v="gray" onClick={() => { setMessage(''); setSelectedUsers(new Set()); }}>リセット</Btn>
         <Btn v="gray" onClick={() => setMessage('')}>キャンセル</Btn>
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSend}>
           {loading ? '送信中...' : '送信'}
