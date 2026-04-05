@@ -509,7 +509,7 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
 // ============================================================
 // 施術者管理画面
 // ============================================================
-function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
+function StaffScreen({ staffList, menuList, bookings, onRefreshStaff, onShiftPage }) {
   const [editStaff, setEditStaff] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -661,7 +661,8 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff }) {
 
       <div style={S.btnRow}>
         <Btn v="primary" onClick={() => setShowAdd(true)}>＋ 施術者を追加</Btn>
-        <Btn v="accent" onClick={() => alert('翌月のシフトは現在の勤務設定を引き継ぎます。')}>翌月のシフトへ反映</Btn>
+        <Btn v="accent" onClick={() => onShiftPage && onShiftPage('current')}>今月のシフトへ反映</Btn>
+        <Btn v="accent" onClick={() => onShiftPage && onShiftPage('next')}>翌月のシフトへ反映</Btn>
       </div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
 
@@ -1583,21 +1584,49 @@ function CsvExportScreen({ bookings, staffList, menuList }) {
 // ============================================================
 // シフト手動設定画面
 // ============================================================
-function ShiftScreen({ staffList, settings }) {
-  const [calDate, setCalDate] = useState(new Date());
+function ShiftScreen({ staffList, settings, initialMode, onBack }) {
+  const now = new Date();
+  // initialModeに応じて初期表示月を設定
+  const initDate = initialMode === 'next'
+    ? new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [calDate, setCalDate] = useState(initDate);
   const [selectedStaff, setSelectedStaff] = useState(staffList[0]?.staffId || '');
-  const [shifts, setShifts] = useState({}); // { 'YYYY-MM-DD': { type, start, end } }
+  const [shifts, setShifts] = useState({});
   const [saved, setSaved] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const DAY = ['日','月','火','水','木','金','土'];
-  const p = n => String(n).padStart(2,'0');
+  const pn = n => String(n).padStart(2,'0');
   const year = calDate.getFullYear(), month = calDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   const today = new Date();
 
-  // 月が変わったらシフトをリセット
-  useEffect(() => { setShifts({}); }, [calDate, selectedStaff]);
+  const TYPES = { off: '休み', am: '午前', pm: '午後', full: '終日', custom: '任意' };
+  const TYPE_COLORS = { off: '#f8fafc', am: '#eff6ff', pm: '#ecfdf5', full: C.primaryPale, custom: '#fef9c3' };
+  const TYPE_LABELS = { off: '', am: '午前', pm: '午後', full: '終日', custom: '任意' };
+
+  // 施術者が変わったらそのスケジュールを読み込む
+  useEffect(() => {
+    const staff = staffList.find(s => s.staffId === selectedStaff);
+    if (!staff) return;
+    // 施術者の勤務スケジュールから今月/翌月の初期シフトを生成
+    let savedSched = {};
+    try { savedSched = JSON.parse(staff.schedule || '{}'); } catch(e) {}
+    const newShifts = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, month, d);
+      const dayName = DAY[dateObj.getDay()];
+      const dateStr = `${year}-${pn(month+1)}-${pn(d)}`;
+      const sched = savedSched[dayName];
+      if (sched && sched.type !== 'off') {
+        newShifts[dateStr] = sched;
+      }
+    }
+    setShifts(newShifts);
+  }, [selectedStaff, calDate]);
 
   // 週を生成
   const weeks = [];
@@ -1608,25 +1637,63 @@ function ShiftScreen({ staffList, settings }) {
     weeks.push(week);
   }
 
-  const TYPES = { off: '休み', am: '午前', pm: '午後', full: '終日', custom: '任意' };
-  const TYPE_COLORS = { off: '#f8fafc', am: '#eff6ff', pm: '#ecfdf5', full: C.primaryPale, custom: '#fef9c3' };
-
   const toggleShift = (dateStr) => {
     const cur = shifts[dateStr]?.type || 'off';
-    const order = ['off', 'am', 'pm', 'full', 'custom'];
+    const order = ['off', 'am', 'pm', 'full'];
     const next = order[(order.indexOf(cur) + 1) % order.length];
     setShifts(p => ({ ...p, [dateStr]: { type: next, start: '09:00', end: '18:00' } }));
   };
+
+  const handleSave = async () => {
+    setLoading(true);
+    const staffName = staffList.find(s => s.staffId === selectedStaff)?.name || selectedStaff;
+    const key = `シフト_${selectedStaff}_${year}-${pn(month+1)}`;
+    const res = await apiPost({
+      action: 'updateSettings',
+      settings: { [key]: JSON.stringify(shifts) }
+    });
+    if (res.success) {
+      setSaved(`${staffName}の${year}年${month+1}月シフトを保存しました`);
+      setTimeout(() => setSaved(''), 4000);
+    } else {
+      alert('保存に失敗しました');
+    }
+    setLoading(false);
+  };
+
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const isNextMonth = year === now.getFullYear() && month === now.getMonth() + 1;
 
   return (
     <div>
       <div style={S.pageHeader}>
         <h2 style={S.pageTitle}>📅 シフト手動設定</h2>
+        {onBack && <Btn v="gray" style={{ fontSize: 12 }} onClick={onBack}>← 施術者管理へ戻る</Btn>}
+      </div>
+      <div style={S.note('info')}>
+        💡 施術者の勤務設定をもとに自動でシフトを生成します。日付をクリックして変更できます。
       </div>
 
-      {/* 施術者選択 */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>施術者：</span>
+      {/* 今月/翌月切替タブ */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, marginTop: 8 }}>
+        <Btn v={isCurrentMonth ? 'primary' : 'outline'} style={{ fontSize: 12 }}
+          onClick={() => setCalDate(new Date(now.getFullYear(), now.getMonth(), 1))}>
+          今月（{now.getMonth()+1}月）
+        </Btn>
+        <Btn v={isNextMonth ? 'primary' : 'outline'} style={{ fontSize: 12 }}
+          onClick={() => setCalDate(new Date(now.getFullYear(), now.getMonth() + 1, 1))}>
+          翌月（{now.getMonth()+2}月）
+        </Btn>
+        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', marginLeft: 8 }}
+          onClick={() => setCalDate(new Date(year, month - 1, 1))}>≪</button>
+        <span style={{ fontSize: 15, fontWeight: 700, alignSelf: 'center', minWidth: 80 }}>{year}年{month+1}月</span>
+        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
+          onClick={() => setCalDate(new Date(year, month + 1, 1))}>≫</button>
+      </div>
+
+      {/* 施術者選択タブ */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, marginRight: 4 }}>施術者：</span>
         {staffList.map(s => (
           <Btn key={s.staffId} v={selectedStaff === s.staffId ? 'primary' : 'outline'}
             style={{ fontSize: 12 }} onClick={() => setSelectedStaff(s.staffId)}>
@@ -1635,23 +1702,14 @@ function ShiftScreen({ staffList, settings }) {
         ))}
       </div>
 
-      {/* 月ナビゲーション */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <Btn v="primary" style={{ fontSize: 12 }} onClick={() => setCalDate(new Date())}>今月</Btn>
-        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
-          onClick={() => setCalDate(new Date(year, month - 1, 1))}>≪</button>
-        <span style={{ fontSize: 15, fontWeight: 700, minWidth: 100, textAlign: 'center' }}>{year}年{month+1}月</span>
-        <button style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
-          onClick={() => setCalDate(new Date(year, month + 1, 1))}>≫</button>
-        <span style={{ fontSize: 12, color: C.muted, marginLeft: 8 }}>シフト手動設定</span>
-      </div>
-
       {/* 凡例 */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-        {Object.entries(TYPES).map(([t, l]) => (
-          <span key={t} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: TYPE_COLORS[t], border: `1px solid ${C.border}` }}>{l}</span>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        {Object.entries(TYPES).filter(([t]) => t !== 'custom').map(([t, l]) => (
+          <span key={t} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: TYPE_COLORS[t], border: `1px solid ${C.border}` }}>
+            {l}
+          </span>
         ))}
-        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで切り替え</span>
+        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで「休み→午前→午後→終日」を切り替え</span>
       </div>
 
       {/* カレンダー */}
@@ -1665,18 +1723,20 @@ function ShiftScreen({ staffList, settings }) {
           {weeks.map((week, wi) => (
             <tr key={wi}>
               {week.map((d, di) => {
-                if (!d) return <td key={di} style={{ border: `1px solid ${C.border}`, height: 64 }} />;
-                const dateStr = `${year}-${p(month+1)}-${p(d)}`;
+                if (!d) return <td key={di} style={{ border: `1px solid ${C.border}`, height: 70 }} />;
+                const dateStr = `${year}-${pn(month+1)}-${pn(d)}`;
                 const shift = shifts[dateStr];
                 const t = shift?.type || 'off';
                 const isToday = year===today.getFullYear() && month===today.getMonth() && d===today.getDate();
+                const staffName = staffList.find(s=>s.staffId===selectedStaff)?.name || '';
                 return (
                   <td key={di} onClick={() => toggleShift(dateStr)}
-                    style={{ border:`1px solid ${C.border}`, height:64, verticalAlign:'top', padding:4, cursor:'pointer', background: TYPE_COLORS[t], outline: isToday?`2px solid ${C.primary}`:'none' }}>
+                    style={{ border:`1px solid ${C.border}`, height:70, verticalAlign:'top', padding:4, cursor:'pointer',
+                      background: TYPE_COLORS[t], outline: isToday?`2px solid ${C.primary}`:'none' }}>
                     <div style={{ fontSize:12, fontWeight:700, color: di===0?'#b91c1c':di===6?'#1d4ed8':C.muted }}>{d}</div>
                     {t !== 'off' && (
-                      <div style={{ fontSize:10.5, marginTop:2, color: C.primary, fontWeight:600 }}>
-                        {staffList.find(s=>s.staffId===selectedStaff)?.name}：{TYPES[t]}
+                      <div style={{ fontSize:10, marginTop:2, color: C.primary, fontWeight:600, lineHeight: 1.3 }}>
+                        {staffName}<br/>{TYPE_LABELS[t]}
                       </div>
                     )}
                   </td>
@@ -1688,12 +1748,24 @@ function ShiftScreen({ staffList, settings }) {
       </table>
 
       <div style={S.btnRow}>
-        <Btn v="gray" onClick={() => setShifts({})}>リセット</Btn>
-        <Btn v="gray" onClick={() => setShifts({})}>キャンセル</Btn>
-        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
-          setSaved(`${staffList.find(s=>s.staffId===selectedStaff)?.name}のシフトを保存しました`);
-          setTimeout(() => setSaved(''), 3000);
-        }}>確定</Btn>
+        <Btn v="gray" onClick={() => {
+          const staff = staffList.find(s => s.staffId === selectedStaff);
+          let savedSched = {};
+          try { savedSched = JSON.parse(staff?.schedule || '{}'); } catch(e) {}
+          const reset = {};
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dateObj = new Date(year, month, d);
+            const dayName = DAY[dateObj.getDay()];
+            const dateStr = `${year}-${pn(month+1)}-${pn(d)}`;
+            const sched = savedSched[dayName];
+            if (sched && sched.type !== 'off') reset[dateStr] = sched;
+          }
+          setShifts(reset);
+        }}>リセット</Btn>
+        {onBack && <Btn v="gray" onClick={onBack}>キャンセル</Btn>}
+        <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>
+          {loading ? '保存中...' : '確定'}
+        </Btn>
       </div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
     </div>
@@ -2019,6 +2091,7 @@ export default function AdminDashboard() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [newBookingInfo, setNewBookingInfo]   = useState(null);
   const [loading, setLoading]         = useState(false);
+  const [shiftMode, setShiftMode]     = useState('current'); // 'current' or 'next'
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -2100,14 +2173,14 @@ export default function AdminDashboard() {
             <div style={S.btnRow}><Btn v="primary" onClick={() => setNewBookingInfo({})}>新規予約</Btn></div>
           </div>
         );
-      case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} bookings={bookings} onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))} />;
+      case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} bookings={bookings} onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))} onShiftPage={(m) => { setShiftMode(m); setCurrentPage('shift'); }} />;
       case 'store':   return <StoreScreen settings={settings} onSave={handleSaveSettings} />;
       case 'menu':    return <MenuScreen menuList={menuList} onRefresh={() => apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus))} />;
       case 'message': return <MessageScreen users={[]} />;
       case 'users':   return <UsersScreen />;
       case 'reminder':  return <ReminderScreen settings={settings} onSave={handleSaveSettings} />;
       case 'csv':       return <CsvExportScreen bookings={bookings} staffList={staffList} menuList={menuList} />;
-      case 'shift':     return <ShiftScreen staffList={staffList} settings={settings} />;
+      case 'shift':     return <ShiftScreen staffList={staffList} settings={settings} initialMode={shiftMode} onBack={() => setCurrentPage('staff')} />;
       case 'inquiry':   return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
       default: return null;
     }
