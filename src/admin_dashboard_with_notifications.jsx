@@ -307,24 +307,48 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
   const openH = parseInt(openStart.split(':')[0]), openM = parseInt(openStart.split(':')[1] || '0');
   const closeH = parseInt(openEnd.split(':')[0]), closeM = parseInt(openEnd.split(':')[1] || '0');
 
-  // スロットを動的生成
-  const slots = [];
-  let cur = openH * 60 + openM;
-  const endMin = closeH * 60 + closeM;
-  while (cur < endMin) {
-    const h = Math.floor(cur / 60), m = cur % 60;
-    slots.push(`${p(h)}:${p(m)}`);
-    cur += unitMin;
-  }
+  // 午前・午後の設定を取得
+  const amEnabled = settings?.['午前営業'] !== 'false';
+  const amStart   = settings?.['午前開始'] || openStart;
+  const amEnd     = settings?.['午前終了'] || '12:00';
+  const pmEnabled = settings?.['午後営業'] !== 'false';
+  const pmStart   = settings?.['午後開始'] || '13:00';
+  const pmEnd     = settings?.['午後終了'] || openEnd;
+  const hasBreak  = settings?.['休憩あり'] !== 'false';
 
-  // 休憩判定関数
-  const isBreak = (slot) => breaks.some(b => {
-    const [bsh, bsm] = b.start.split(':').map(Number);
-    const [beh, bem] = b.end.split(':').map(Number);
-    const [sh, sm] = slot.split(':').map(Number);
-    const t = sh * 60 + sm;
-    return t >= bsh * 60 + bsm && t < beh * 60 + bem;
-  });
+  // スロットを動的生成（午前・午後に対応）
+  const generateRange = (startStr, endStr) => {
+    const [sh, sm] = startStr.split(':').map(Number);
+    const [eh, em] = endStr.split(':').map(Number);
+    const result = [];
+    let cur = sh * 60 + sm;
+    const end = eh * 60 + em;
+    while (cur < end) {
+      const h = Math.floor(cur / 60), m = cur % 60;
+      result.push(`${p(h)}:${p(m)}`);
+      cur += unitMin;
+    }
+    return result;
+  };
+
+  const slots = [
+    ...(amEnabled ? generateRange(amStart, amEnd) : []),
+    ...(pmEnabled ? generateRange(pmStart, pmEnd) : []),
+    // 両方無効の場合は従来のデフォルト
+    ...(!amEnabled && !pmEnabled ? generateRange(openStart, openEnd) : []),
+  ];
+
+  // 休憩判定関数（手動設定 + 午前・午後の間を自動休憩）
+  const isBreak = (slot) => {
+    if (!hasBreak) return false;
+    return breaks.some(b => {
+      const [bsh, bsm] = b.start.split(':').map(Number);
+      const [beh, bem] = b.end.split(':').map(Number);
+      const [sh, sm] = slot.split(':').map(Number);
+      const t = sh * 60 + sm;
+      return t >= bsh * 60 + bsm && t < beh * 60 + bem;
+    });
+  };
 
   // 時刻を正規化してマッピング
   const bookingMap = {};
@@ -985,8 +1009,18 @@ function StoreScreen({ settings, onSave }) {
     storeEmail:     s['店舗メール'] || '',
     closedDays:     (s['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
     closedDatesSet: parseClosedDates(s['定休日（任意）'] || ''),
-    openStart:      s['営業開始時刻'] || '09:00',
-    openEnd:        s['営業終了時刻'] || '18:00',
+    // 午前・午後の営業時間
+    amEnabled:      s['午前営業'] !== 'false',
+    amStart:        s['午前開始'] || '09:00',
+    amEnd:          s['午前終了'] || '12:00',
+    pmEnabled:      s['午後営業'] !== 'false',
+    pmStart:        s['午後開始'] || '13:00',
+    pmEnd:          s['午後終了'] || '18:00',
+    // 互換性のため従来フィールドも保持
+    openStart:      s['午前開始'] || s['営業開始時刻'] || '09:00',
+    openEnd:        s['午後終了'] || s['営業終了時刻'] || '18:00',
+    // 休憩
+    hasBreak:       s['休憩あり'] !== 'false' && (s['休憩時間'] ? true : false),
     breaks:         parseBreaks(s['休憩時間']),
     unitMin:        String(s['施術単位（分）'] || '30'),
     refreshSec:     String(s['自動更新間隔（秒）'] || '30'),
@@ -1018,14 +1052,22 @@ function StoreScreen({ settings, onSave }) {
 
   const handleSave = async () => {
     await onSave({
-      '店舗名': form.storeName,
-      '店舗メール': form.storeEmail,
-      '定休曜日': form.closedDays.join(','),
-      '定休日（任意）': [...form.closedDatesSet].sort().join(','),
-      '営業開始時刻': form.openStart,
-      '営業終了時刻': form.openEnd,
-      '休憩時間': JSON.stringify(form.breaks),
-      '施術単位（分）': form.unitMin,
+      '店舗名':           form.storeName,
+      '店舗メール':       form.storeEmail,
+      '定休曜日':         form.closedDays.join(','),
+      '定休日（任意）':   [...form.closedDatesSet].sort().join(','),
+      '午前営業':         String(form.amEnabled),
+      '午前開始':         form.amStart,
+      '午前終了':         form.amEnd,
+      '午後営業':         String(form.pmEnabled),
+      '午後開始':         form.pmStart,
+      '午後終了':         form.pmEnd,
+      // 予約スロット生成用の互換フィールド
+      '営業開始時刻':     form.amEnabled ? form.amStart : form.pmStart,
+      '営業終了時刻':     form.pmEnabled ? form.pmEnd : form.amEnd,
+      '休憩あり':         String(form.hasBreak),
+      '休憩時間':         form.hasBreak ? JSON.stringify(form.breaks) : '[]',
+      '施術単位（分）':   form.unitMin,
       '自動更新間隔（秒）': form.refreshSec,
     });
     setSaved(true);
@@ -1076,32 +1118,73 @@ function StoreScreen({ settings, onSave }) {
 
           {/* 営業時間 */}
           <FormRow label="営業時間">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input style={{ ...S.input, width: 90 }} type="time" value={form.openStart}
-                onChange={e => setForm(p=>({...p,openStart:e.target.value}))} />
-              <span style={{ fontSize: 13 }}>〜</span>
-              <input style={{ ...S.input, width: 90 }} type="time" value={form.openEnd}
-                onChange={e => setForm(p=>({...p,openEnd:e.target.value}))} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* 午前営業 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5, minWidth: 60 }}>
+                  <input type="checkbox" checked={form.amEnabled}
+                    onChange={e => setForm(p=>({...p, amEnabled: e.target.checked}))} />
+                  午前
+                </label>
+                <input style={{ ...S.input, width: 90 }} type="time"
+                  value={form.amStart} disabled={!form.amEnabled}
+                  onChange={e => setForm(p=>({...p,amStart:e.target.value}))} />
+                <span style={{ fontSize: 13 }}>〜</span>
+                <input style={{ ...S.input, width: 90 }} type="time"
+                  value={form.amEnd} disabled={!form.amEnabled}
+                  onChange={e => setForm(p=>({...p,amEnd:e.target.value}))} />
+              </div>
+              {/* 午後営業 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5, minWidth: 60 }}>
+                  <input type="checkbox" checked={form.pmEnabled}
+                    onChange={e => setForm(p=>({...p, pmEnabled: e.target.checked}))} />
+                  午後
+                </label>
+                <input style={{ ...S.input, width: 90 }} type="time"
+                  value={form.pmStart} disabled={!form.pmEnabled}
+                  onChange={e => setForm(p=>({...p,pmStart:e.target.value}))} />
+                <span style={{ fontSize: 13 }}>〜</span>
+                <input style={{ ...S.input, width: 90 }} type="time"
+                  value={form.pmEnd} disabled={!form.pmEnabled}
+                  onChange={e => setForm(p=>({...p,pmEnd:e.target.value}))} />
+              </div>
+              <div style={{ fontSize: 11, color: C.muted }}>
+                ※ 予約枠：{
+                  form.amEnabled && form.pmEnabled ? `${form.amStart}〜${form.amEnd}、${form.pmStart}〜${form.pmEnd}` :
+                  form.amEnabled ? `${form.amStart}〜${form.amEnd}` :
+                  form.pmEnabled ? `${form.pmStart}〜${form.pmEnd}` : '未設定'
+                }
+              </div>
             </div>
           </FormRow>
 
           {/* 休憩時間 */}
           <FormRow label="休憩時間">
             <div>
-              {form.breaks.map((b, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <input style={{ ...S.input, width: 90 }} type="time" value={b.start}
-                    onChange={e => updateBreak(i, 'start', e.target.value)} />
-                  <span style={{ fontSize: 13 }}>〜</span>
-                  <input style={{ ...S.input, width: 90 }} type="time" value={b.end}
-                    onChange={e => updateBreak(i, 'end', e.target.value)} />
-                  <button style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: 16 }}
-                    onClick={() => removeBreak(i)}>✕</button>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, marginBottom: 10 }}>
+                <input type="checkbox" checked={form.hasBreak}
+                  onChange={e => setForm(p=>({...p, hasBreak: e.target.checked}))} />
+                休憩あり
+              </label>
+              {form.hasBreak && (
+                <div>
+                  {form.breaks.map((b, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <input style={{ ...S.input, width: 90 }} type="time" value={b.start}
+                        onChange={e => updateBreak(i, 'start', e.target.value)} />
+                      <span style={{ fontSize: 13 }}>〜</span>
+                      <input style={{ ...S.input, width: 90 }} type="time" value={b.end}
+                        onChange={e => updateBreak(i, 'end', e.target.value)} />
+                      <button style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: 16 }}
+                        onClick={() => removeBreak(i)}>✕</button>
+                    </div>
+                  ))}
+                  <Btn v="outline" style={{ fontSize: 11, padding: '3px 10px', marginTop: 4 }} onClick={addBreak}>
+                    ＋ 休憩を追加
+                  </Btn>
                 </div>
-              ))}
-              <Btn v="outline" style={{ fontSize: 11, padding: '3px 10px', marginTop: 4 }} onClick={addBreak}>
-                ＋ 休憩を追加
-              </Btn>
+              )}
               <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>全施術者に共通適用されます</div>
             </div>
           </FormRow>
