@@ -298,28 +298,55 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
   const DAY = ['日','月','火','水','木','金','土'];
   const p = n => String(n).padStart(2, '0');
   const dateStr = `${currentDate.getFullYear()}-${p(currentDate.getMonth()+1)}-${p(currentDate.getDate())}`;
+  const dayName = DAY[currentDate.getDay()];
+  const [shiftMap, setShiftMap] = useState({}); // { staffId: { type, start, end } }
 
-  // 営業時間・休憩時間を設定から取得
-  const openStart = settings?.['営業開始時刻'] || '09:00';
-  const openEnd   = settings?.['営業終了時刻'] || '18:00';
+  // 当日のシフトをGoogle Sheetsから読み込む
+  useEffect(() => {
+    const yearMonth = `${currentDate.getFullYear()}-${p(currentDate.getMonth()+1)}`;
+    const newMap = {};
+    // 全施術者のシフトを並列取得
+    Promise.all(staffList.map(s =>
+      apiGet({ action: 'getShifts', staffId: s.staffId, yearMonth })
+        .then(r => {
+          if (r.success && r.data.shifts[dateStr]) {
+            newMap[s.staffId] = r.data.shifts[dateStr];
+          } else {
+            // シフトデータがなければ勤務曜日で判定
+            let sched = {};
+            try { sched = JSON.parse(s.schedule || '{}'); } catch(e) {}
+            if (sched[dayName] && sched[dayName].type !== 'off') {
+              newMap[s.staffId] = sched[dayName];
+            } else if (!s.schedule && (s.workDays||'').split(',').map(d=>d.trim()).includes(dayName)) {
+              newMap[s.staffId] = { type: 'full' };
+            }
+          }
+        })
+        .catch(() => {
+          // フォールバック：勤務曜日で判定
+          if ((s.workDays||'').split(',').map(d=>d.trim()).includes(dayName)) {
+            newMap[s.staffId] = { type: 'full' };
+          }
+        })
+    )).then(() => setShiftMap({...newMap}));
+  }, [dateStr, staffList.length]);
+
+  // 設定から営業時間を取得
+  const openStart = settings?.['午前営業'] !== 'false' ? (settings?.['午前開始'] || '09:00') : (settings?.['午後開始'] || '09:00');
+  const openEnd   = settings?.['午後営業'] !== 'false' ? (settings?.['午後終了'] || '18:00') : (settings?.['午前終了'] || '18:00');
   const unitMin   = parseInt(settings?.['施術単位（分）'] || '30');
   const breaks    = (() => { try { return JSON.parse(settings?.['休憩時間'] || '[]'); } catch { return []; } })();
-  const openH = parseInt(openStart.split(':')[0]), openM = parseInt(openStart.split(':')[1] || '0');
-  const closeH = parseInt(openEnd.split(':')[0]), closeM = parseInt(openEnd.split(':')[1] || '0');
-
-  // 午前・午後の設定を取得
+  const hasBreak  = settings?.['休憩あり'] === 'true';
   const amEnabled = settings?.['午前営業'] !== 'false';
-  const amStart   = settings?.['午前開始'] || openStart;
+  const amStart   = settings?.['午前開始'] || '09:00';
   const amEnd     = settings?.['午前終了'] || '12:00';
   const pmEnabled = settings?.['午後営業'] !== 'false';
   const pmStart   = settings?.['午後開始'] || '13:00';
-  const pmEnd     = settings?.['午後終了'] || openEnd;
-  const hasBreak  = settings?.['休憩あり'] !== 'false';
+  const pmEnd     = settings?.['午後終了'] || '18:00';
 
-  // スロットを動的生成（午前・午後に対応）
   const generateRange = (startStr, endStr) => {
-    const [sh, sm] = startStr.split(':').map(Number);
-    const [eh, em] = endStr.split(':').map(Number);
+    const [sh, sm] = (startStr||'09:00').split(':').map(Number);
+    const [eh, em] = (endStr||'18:00').split(':').map(Number);
     const result = [];
     let cur = sh * 60 + sm;
     const end = eh * 60 + em;
@@ -334,29 +361,56 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
   const slots = [
     ...(amEnabled ? generateRange(amStart, amEnd) : []),
     ...(pmEnabled ? generateRange(pmStart, pmEnd) : []),
-    // 両方無効の場合は従来のデフォルト
     ...(!amEnabled && !pmEnabled ? generateRange(openStart, openEnd) : []),
   ];
 
-  // 休憩判定関数（手動設定 + 午前・午後の間を自動休憩）
-  const isBreak = (slot) => {
+  const isBreakSlot = (slot) => {
     if (!hasBreak) return false;
     return breaks.some(b => {
-      const [bsh, bsm] = b.start.split(':').map(Number);
-      const [beh, bem] = b.end.split(':').map(Number);
+      const [bsh, bsm] = (b.start||'12:00').split(':').map(Number);
+      const [beh, bem] = (b.end||'13:00').split(':').map(Number);
       const [sh, sm] = slot.split(':').map(Number);
       const t = sh * 60 + sm;
       return t >= bsh * 60 + bsm && t < beh * 60 + bem;
     });
   };
 
-  // 時刻を正規化してマッピング
+  // 施術者がそのスロットに勤務中か判定
+  const isWorking = (staffId, slot) => {
+    const shift = shiftMap[staffId];
+    if (!shift || shift.type === 'off') return false;
+    if (shift.type === 'am') {
+      const [sh, sm] = (amStart||'09:00').split(':').map(Number);
+      const [eh, em] = (amEnd||'12:00').split(':').map(Number);
+      const [h, m] = slot.split(':').map(Number);
+      const t = h*60+m;
+      return t >= sh*60+sm && t < eh*60+em;
+    }
+    if (shift.type === 'pm') {
+      const [sh, sm] = (pmStart||'13:00').split(':').map(Number);
+      const [eh, em] = (pmEnd||'18:00').split(':').map(Number);
+      const [h, m] = slot.split(':').map(Number);
+      const t = h*60+m;
+      return t >= sh*60+sm && t < eh*60+em;
+    }
+    return true; // full / custom は全スロット勤務
+  };
+
+  // 予約マップ
   const bookingMap = {};
   bookings.forEach(b => {
     const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
     const time = rawTime.includes(':') && rawTime.indexOf(':') < 2 ? rawTime.padStart(5, '0') : rawTime;
     bookingMap[`${time}__${b.staffId}`] = b;
   });
+
+  // 凡例
+  const legend = [
+    { bg: '#fff', border: `2px solid ${C.success}`, label: '予約可能' },
+    { bg: '#f1f5f9', border: `1px solid ${C.border}`, label: '休み', icon: '—' },
+    { bg: C.primaryPale, border: `1px solid ${C.primary}`, label: '予約あり' },
+    { bg: '#fef3c7', border: `1px solid #f59e0b`, label: '休憩時間' },
+  ];
 
   return (
     <div>
@@ -370,38 +424,92 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
         <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
           onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate()+1); onChangeDate(d); }}>≫</button>
       </div>
-      <div style={S.note('info')}>💡 利用者名クリック→予約詳細。空欄クリック→新規予約。橙＝昼休憩。</div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
-        <thead>
-          <tr>
-            <th style={{ ...S.dayTd('time'), background: '#374151', color: '#fff', width: 72 }}>時間</th>
-            {staffList.map(s => <th key={s.staffId} style={{ background: C.primary, color: '#fff', padding: '7px 10px', textAlign: 'center', fontSize: 12.5, border: `1px solid ${C.border}` }}>{s.name}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {slots.map(slot => {
-            const inBreak = isBreak(slot);
-            return (
-              <tr key={slot}>
-                <td style={S.dayTd('time')}>{slot}</td>
-                {staffList.map(s => {
-                  const booking = bookingMap[`${slot}__${s.staffId}`];
-                  if (inBreak) return <td key={s.staffId} style={S.dayTd('break')}>{slot === '12:00' && <span style={{ fontSize: 11, color: '#92400e' }}>🌙 昼休憩</span>}</td>;
-                  if (booking) {
-                    const mName = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
-                    return (
-                      <td key={s.staffId} style={S.dayTd('booked')} onClick={() => onSelectBooking(booking)}>
-                        <div style={{ fontSize: 10.5, color: C.primary, fontWeight: 500, lineHeight: 1.4 }}>{mName} / {booking.userName}</div>
+
+      {/* 凡例 */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        {legend.map(l => (
+          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+            <div style={{ width: 16, height: 16, borderRadius: 3, background: l.bg, border: l.border }} />
+            {l.label}
+          </div>
+        ))}
+        <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>💡 予約可能セルをクリックで新規予約</span>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, minWidth: 500 }}>
+          <thead>
+            <tr>
+              <th style={{ background: '#374151', color: '#fff', width: 68, padding: '6px 4px', textAlign: 'center', fontSize: 12, border: `1px solid ${C.border}` }}>時間</th>
+              {staffList.map(s => {
+                const shift = shiftMap[s.staffId];
+                const isOff = !shift || shift.type === 'off';
+                const shiftLabel = shift ? ({ am:'午前', pm:'午後', full:'終日', custom:'任意', off:'休み' }[shift.type] || '') : '未設定';
+                return (
+                  <th key={s.staffId} style={{ background: isOff ? '#64748b' : C.primary, color: '#fff', padding: '6px 8px', textAlign: 'center', fontSize: 12, border: `1px solid ${C.border}`, minWidth: 100 }}>
+                    <div style={{ fontWeight: 700 }}>{s.name}</div>
+                    <div style={{ fontSize: 10, marginTop: 2, opacity: 0.85, background: isOff ? 'rgba(0,0,0,.2)' : 'rgba(255,255,255,.2)', borderRadius: 3, padding: '1px 4px', display: 'inline-block' }}>
+                      {isOff ? '🔴 休み' : `🟢 ${shiftLabel}`}
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {slots.map(slot => {
+              const inBreak = isBreakSlot(slot);
+              return (
+                <tr key={slot}>
+                  <td style={{ background: '#f8fafc', fontSize: 11.5, color: C.muted, textAlign: 'center', fontFamily: 'monospace', border: `1px solid ${C.border}`, padding: '3px 4px', height: 40, verticalAlign: 'middle' }}>{slot}</td>
+                  {staffList.map(s => {
+                    const booking = bookingMap[`${slot}__${s.staffId}`];
+                    const working = isWorking(s.staffId, slot);
+                    const base = { border: `1px solid ${C.border}`, height: 40, padding: '3px 6px', verticalAlign: 'top', fontSize: 11, transition: 'background .1s' };
+
+                    // 休憩スロット
+                    if (inBreak) return (
+                      <td key={s.staffId} style={{ ...base, background: '#fef3c7' }}>
+                        {working && <span style={{ fontSize: 10, color: '#92400e' }}>🌙 休憩</span>}
                       </td>
                     );
-                  }
-                  return <td key={s.staffId} style={S.dayTd('empty')} onClick={() => onSelectEmpty(dateStr, slot, s.staffId)} />;
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+
+                    // 予約あり
+                    if (booking) {
+                      const mName = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
+                      return (
+                        <td key={s.staffId} style={{ ...base, background: '#dbeafe', cursor: 'pointer', border: `1.5px solid ${C.primary}` }}
+                          onClick={() => onSelectBooking(booking)}>
+                          <div style={{ fontWeight: 700, color: C.primary, fontSize: 11 }}>{booking.userName}</div>
+                          <div style={{ color: '#1e40af', fontSize: 10 }}>{mName}</div>
+                        </td>
+                      );
+                    }
+
+                    // 休み（シフトなし）
+                    if (!working) return (
+                      <td key={s.staffId} style={{ ...base, background: '#f1f5f9' }}>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>—</span>
+                      </td>
+                    );
+
+                    // 予約可能（勤務中・空き）
+                    return (
+                      <td key={s.staffId}
+                        style={{ ...base, background: '#fff', border: `1.5px solid ${C.success}`, cursor: 'pointer' }}
+                        onClick={() => onSelectEmpty(dateStr, slot, s.staffId)}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                        onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                        <span style={{ fontSize: 10, color: C.success }}>＋</span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
