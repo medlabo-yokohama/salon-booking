@@ -657,7 +657,7 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff, onShiftPag
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
 
       <div style={S.btnRow}>
         <Btn v="primary" onClick={() => setShowAdd(true)}>＋ 施術者を追加</Btn>
@@ -1608,7 +1608,7 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
   const TYPE_COLORS = { off: '#f8fafc', am: '#eff6ff', pm: '#ecfdf5', full: C.primaryPale, custom: '#fef9c3' };
   const TYPE_LABELS = { off: '', am: '午前', pm: '午後', full: '終日', custom: '任意' };
 
-  // 施術者・月が変わったらシフトを読み込む（Google Sheets優先 → 勤務スケジュールをフォールバック）
+  // 施術者・月が変わったらシフトを読み込む（専用シート優先 → 勤務スケジュールをフォールバック）
   useEffect(() => {
     const staff = staffList.find(s => s.staffId === selectedStaff);
     if (!staff) return;
@@ -1628,18 +1628,13 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
       return newShifts;
     };
 
-    // Google Sheetsから保存済みシフトを読み込む
-    const shiftKey = `シフト_${selectedStaff}_${year}-${pn(month+1)}`;
+    // シフト専用シートから保存済みシフトを読み込む
+    const yearMonth = `${year}-${pn(month+1)}`;
     setLoading(true);
-    apiGet({ action: 'getSettings' }).then(r => {
-      if (r.success && r.data.settings[shiftKey]) {
+    apiGet({ action: 'getShifts', staffId: selectedStaff, yearMonth }).then(r => {
+      if (r.success && Object.keys(r.data.shifts || {}).length > 0) {
         // 保存済みシフトがあればそれを使用
-        try {
-          const saved = JSON.parse(r.data.settings[shiftKey]);
-          setShifts(saved);
-        } catch(e) {
-          setShifts(buildFromSchedule());
-        }
+        setShifts(r.data.shifts);
       } else {
         // 保存済みがなければ勤務スケジュールから生成
         setShifts(buildFromSchedule());
@@ -1669,17 +1664,21 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
 
   const handleSave = async () => {
     setLoading(true);
-    const staffName = staffList.find(s => s.staffId === selectedStaff)?.name || selectedStaff;
-    const key = `シフト_${selectedStaff}_${year}-${pn(month+1)}`;
+    const staff = staffList.find(s => s.staffId === selectedStaff);
+    const staffName = staff?.name || selectedStaff;
+    const yearMonth = `${year}-${pn(month+1)}`;
     const res = await apiPost({
-      action: 'updateSettings',
-      settings: { [key]: JSON.stringify(shifts) }
+      action: 'saveShifts',
+      staffId: selectedStaff,
+      staffName,
+      yearMonth,
+      shifts,
     });
     if (res.success) {
-      setSaved(`${staffName}の${year}年${month+1}月シフトを保存しました`);
+      setSaved(`${staffName}の${year}年${month+1}月シフトを保存しました（${res.data?.saved || 0}件）`);
       setTimeout(() => setSaved(''), 4000);
     } else {
-      alert('保存に失敗しました');
+      alert('保存に失敗しました: ' + (res.error?.message || ''));
     }
     setLoading(false);
   };
@@ -1735,8 +1734,11 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
         <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで「休み→午前→午後→終日」を切り替え</span>
       </div>
 
+      {/* 読み込み中 */}
+      {loading && <div style={{ textAlign: 'center', padding: 20, color: C.muted, fontSize: 13 }}>📅 シフトを読み込んでいます...</div>}
+
       {/* カレンダー */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
+      {!loading && <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
         <thead>
           <tr>{DAY.map((d, i) => (
             <th key={d} style={{ background: i===0?'#b91c1c':i===6?'#1d4ed8':C.primary, color:'#fff', padding:'6px 4px', textAlign:'center', fontSize:12 }}>{d}</th>
@@ -1768,10 +1770,11 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
 
       <div style={S.btnRow}>
         <Btn v="gray" onClick={() => {
+          // 勤務スケジュールから初期値に戻す
           const staff = staffList.find(s => s.staffId === selectedStaff);
           let savedSched = {};
           try { savedSched = JSON.parse(staff?.schedule || '{}'); } catch(e) {}
@@ -1784,7 +1787,7 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
             if (sched && sched.type !== 'off') reset[dateStr] = sched;
           }
           setShifts(reset);
-        }}>リセット</Btn>
+        }}>勤務設定に戻す</Btn>
         {onBack && <Btn v="gray" onClick={onBack}>キャンセル</Btn>}
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>
           {loading ? '保存中...' : '確定'}
