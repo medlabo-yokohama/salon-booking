@@ -1608,24 +1608,47 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
   const TYPE_COLORS = { off: '#f8fafc', am: '#eff6ff', pm: '#ecfdf5', full: C.primaryPale, custom: '#fef9c3' };
   const TYPE_LABELS = { off: '', am: '午前', pm: '午後', full: '終日', custom: '任意' };
 
-  // 施術者が変わったらそのスケジュールを読み込む
+  // 施術者・月が変わったらシフトを読み込む（Google Sheets優先 → 勤務スケジュールをフォールバック）
   useEffect(() => {
     const staff = staffList.find(s => s.staffId === selectedStaff);
     if (!staff) return;
-    // 施術者の勤務スケジュールから今月/翌月の初期シフトを生成
-    let savedSched = {};
-    try { savedSched = JSON.parse(staff.schedule || '{}'); } catch(e) {}
-    const newShifts = {};
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, month, d);
-      const dayName = DAY[dateObj.getDay()];
-      const dateStr = `${year}-${pn(month+1)}-${pn(d)}`;
-      const sched = savedSched[dayName];
-      if (sched && sched.type !== 'off') {
-        newShifts[dateStr] = sched;
+
+    // 勤務スケジュールから初期シフトを生成する関数
+    const buildFromSchedule = () => {
+      let savedSched = {};
+      try { savedSched = JSON.parse(staff.schedule || '{}'); } catch(e) {}
+      const newShifts = {};
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month, d);
+        const dayName = DAY[dateObj.getDay()];
+        const dateStr = `${year}-${pn(month+1)}-${pn(d)}`;
+        const sched = savedSched[dayName];
+        if (sched && sched.type !== 'off') newShifts[dateStr] = sched;
       }
-    }
-    setShifts(newShifts);
+      return newShifts;
+    };
+
+    // Google Sheetsから保存済みシフトを読み込む
+    const shiftKey = `シフト_${selectedStaff}_${year}-${pn(month+1)}`;
+    setLoading(true);
+    apiGet({ action: 'getSettings' }).then(r => {
+      if (r.success && r.data.settings[shiftKey]) {
+        // 保存済みシフトがあればそれを使用
+        try {
+          const saved = JSON.parse(r.data.settings[shiftKey]);
+          setShifts(saved);
+        } catch(e) {
+          setShifts(buildFromSchedule());
+        }
+      } else {
+        // 保存済みがなければ勤務スケジュールから生成
+        setShifts(buildFromSchedule());
+      }
+      setLoading(false);
+    }).catch(() => {
+      setShifts(buildFromSchedule());
+      setLoading(false);
+    });
   }, [selectedStaff, calDate]);
 
   // 週を生成
