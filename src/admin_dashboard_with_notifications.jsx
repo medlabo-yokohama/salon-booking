@@ -1848,29 +1848,20 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
 
   const toggleShift = (dateStr) => {
     const cur = shifts[dateStr]?.type || 'off';
-    // 「休み→午前→午後→終日→任意→休み」の順で循環
-    const order = ['off', 'am', 'pm', 'full', 'custom'];
+    // 「休み→午前→午後→終日→休み」の順で循環（任意は循環に含めない）
+    const order = ['off', 'am', 'pm', 'full'];
     const next = order[(order.indexOf(cur) + 1) % order.length];
-
-    if (next === 'custom') {
-      // 任意に進む場合：モーダルを開いて時間を入力させる（シフトはまだ更新しない）
-      const curStart = shifts[dateStr]?.start || settingsAmStart;
-      const curEnd   = shifts[dateStr]?.end   || settingsPmEnd;
-      setCustomTarget({ dateStr, start: curStart, end: curEnd, prevShift: shifts[dateStr] || null });
-    } else {
-      // 任意以外：プリセット時間でセット
-      const presetStart = next === 'pm' ? (settings?.['午後開始'] || '13:00') : (settings?.['午前開始'] || '09:00');
-      const presetEnd   = next === 'am' ? (settings?.['午前終了'] || '12:00') : (settings?.['午後終了'] || '18:00');
-      setShifts(p => ({ ...p, [dateStr]: { type: next, start: presetStart, end: presetEnd } }));
-    }
+    const presetStart = next === 'pm' ? (settings?.['午後開始'] || '13:00') : (settings?.['午前開始'] || '09:00');
+    const presetEnd   = next === 'am' ? (settings?.['午前終了'] || '12:00') : (settings?.['午後終了'] || '18:00');
+    setShifts(p => ({ ...p, [dateStr]: { type: next, start: presetStart, end: presetEnd } }));
   };
 
-  // 任意セルの時間編集ボタン用（循環とは独立してモーダルを開く）
+  // 「任意」ボタン押下時：モーダルを開く（循環とは独立）
   const openCustomEdit = (e, dateStr) => {
-    e.stopPropagation(); // セルのクリック（循環）を止める
+    e.stopPropagation();
     const curStart = shifts[dateStr]?.start || settingsAmStart;
     const curEnd   = shifts[dateStr]?.end   || settingsPmEnd;
-    setCustomTarget({ dateStr, start: curStart, end: curEnd, prevShift: shifts[dateStr] });
+    setCustomTarget({ dateStr, start: curStart, end: curEnd, prevShift: shifts[dateStr] || null });
   };
 
   const handleSave = async () => {
@@ -1942,7 +1933,7 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
             {l}
           </span>
         ))}
-        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで「休み→午前→午後→終日→任意」を切り替え。任意は「✎」ボタンで時間を編集できます。</span>
+        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで「休み→午前→午後→終日→休み」を切り替え。「任意設定」ボタンで自由な時間を設定できます。</span>
       </div>
 
       {/* 読み込み中 */}
@@ -1967,23 +1958,26 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
                 const staffName = staffList.find(s=>s.staffId===selectedStaff)?.name || '';
                 return (
                   <td key={di} onClick={() => toggleShift(dateStr)}
-                    style={{ border:`1px solid ${C.border}`, height:70, verticalAlign:'top', padding:4, cursor:'pointer',
+                    style={{ border:`1px solid ${C.border}`, height:80, verticalAlign:'top', padding:4, cursor:'pointer',
                       background: TYPE_COLORS[t], outline: isToday?`2px solid ${C.primary}`:'none' }}>
                     <div style={{ fontSize:12, fontWeight:700, color: di===0?'#b91c1c':di===6?'#1d4ed8':C.muted }}>{d}</div>
                     {t !== 'off' && (
-                      <div style={{ fontSize:10, marginTop:2, color: C.primary, fontWeight:600, lineHeight: 1.3 }}>
+                      <div style={{ fontSize:10, marginTop:2, color: C.primary, fontWeight:600, lineHeight: 1.4 }}>
                         {staffName}<br/>
-                        {/* ④ 任意の場合は時間と編集ボタンを表示 */}
-                        {t === 'custom' ? (
-                          <span>
-                            {`${shift?.start||''}〜${shift?.end||''}`}
-                            <button
-                              onClick={e => openCustomEdit(e, dateStr)}
-                              style={{ marginLeft:3, fontSize:10, background:'rgba(255,255,255,0.8)', border:`1px solid ${C.primary}`, borderRadius:3, cursor:'pointer', padding:'0 3px', color: C.primary, lineHeight:1.4 }}
-                              title="時間を変更">✎</button>
-                          </span>
-                        ) : TYPE_LABELS[t]}
+                        {t === 'custom'
+                          ? `${shift?.start||''}〜${shift?.end||''}`
+                          : TYPE_LABELS[t]
+                        }
                       </div>
+                    )}
+                    {/* 任意設定ボタン：休み以外のセルに表示 */}
+                    {t !== 'off' && (
+                      <button
+                        onClick={e => openCustomEdit(e, dateStr)}
+                        style={{ marginTop:2, fontSize:9, background: t === 'custom' ? C.primary : 'rgba(255,255,255,0.85)', border:`1px solid ${C.primary}`, borderRadius:3, cursor:'pointer', padding:'1px 4px', color: t === 'custom' ? '#fff' : C.primary, display:'block', width:'100%' }}
+                        title="任意の時間を設定">
+                        {t === 'custom' ? '✎ 時間変更' : '任意設定'}
+                      </button>
                     )}
                   </td>
                 );
