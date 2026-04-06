@@ -1958,26 +1958,27 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
                 const staffName = staffList.find(s=>s.staffId===selectedStaff)?.name || '';
                 return (
                   <td key={di} onClick={() => toggleShift(dateStr)}
-                    style={{ border:`1px solid ${C.border}`, height:80, verticalAlign:'top', padding:4, cursor:'pointer',
-                      background: TYPE_COLORS[t], outline: isToday?`2px solid ${C.primary}`:'none' }}>
+                    style={{ border:`1px solid ${C.border}`, height:70, verticalAlign:'top', padding:'3px 4px', cursor:'pointer',
+                      background: TYPE_COLORS[t], outline: isToday?`2px solid ${C.primary}`:'none', position:'relative' }}>
                     <div style={{ fontSize:12, fontWeight:700, color: di===0?'#b91c1c':di===6?'#1d4ed8':C.muted }}>{d}</div>
                     {t !== 'off' && (
-                      <div style={{ fontSize:10, marginTop:2, color: C.primary, fontWeight:600, lineHeight: 1.4 }}>
-                        {staffName}<br/>
+                      <div style={{ fontSize:10, marginTop:1, color: C.primary, fontWeight:600, lineHeight: 1.3 }}>
                         {t === 'custom'
-                          ? `${shift?.start||''}〜${shift?.end||''}`
+                          ? <><span style={{ fontSize:9 }}>任意</span><br/>{shift?.start||''}〜{shift?.end||''}</>
                           : TYPE_LABELS[t]
                         }
                       </div>
                     )}
-                    {/* 任意設定ボタン：休み以外のセルに表示 */}
+                    {/* 任意設定ボタン：鉛筆アイコンをセル右下に配置 */}
                     {t !== 'off' && (
                       <button
                         onClick={e => openCustomEdit(e, dateStr)}
-                        style={{ marginTop:2, fontSize:9, background: t === 'custom' ? C.primary : 'rgba(255,255,255,0.85)', border:`1px solid ${C.primary}`, borderRadius:3, cursor:'pointer', padding:'1px 4px', color: t === 'custom' ? '#fff' : C.primary, display:'block', width:'100%' }}
-                        title="任意の時間を設定">
-                        {t === 'custom' ? '✎ 時間変更' : '任意設定'}
-                      </button>
+                        style={{ position:'absolute', bottom:3, right:3, fontSize:9, lineHeight:1,
+                          background: t === 'custom' ? C.primary : 'rgba(255,255,255,0.9)',
+                          border:`1px solid ${t === 'custom' ? C.primary : C.border}`,
+                          borderRadius:3, cursor:'pointer', padding:'1px 3px',
+                          color: t === 'custom' ? '#fff' : C.muted }}
+                        title="任意の時間を設定">✎</button>
                     )}
                   </td>
                 );
