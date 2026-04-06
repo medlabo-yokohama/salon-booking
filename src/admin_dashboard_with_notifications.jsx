@@ -1848,16 +1848,28 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
 
   const toggleShift = (dateStr) => {
     const cur = shifts[dateStr]?.type || 'off';
-    // ④ 「休み→午前→午後→終日→任意→休み」の順で循環
-    const order = ['off', 'am', 'pm', 'full', 'custom'];
-    const next = order[(order.indexOf(cur) + 1) % order.length];
-    if (next === 'custom') {
-      // 任意選択時：現在のstart/endを引き継ぎ、時間入力モーダルを開く
+
+    // 現在「任意」の場合：クリックで時間編集モーダルを再表示
+    if (cur === 'custom') {
       const curStart = shifts[dateStr]?.start || settingsAmStart;
       const curEnd   = shifts[dateStr]?.end   || settingsPmEnd;
-      setCustomTarget({ dateStr, start: curStart, end: curEnd });
+      // prevShift に現在のシフトを保存（キャンセル時に戻すため）
+      setCustomTarget({ dateStr, start: curStart, end: curEnd, prevShift: shifts[dateStr] });
+      return;
+    }
+
+    // 「休み→午前→午後→終日→任意」の順で循環
+    const order = ['off', 'am', 'pm', 'full', 'custom'];
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+
+    if (next === 'custom') {
+      // 任意に進む場合：モーダルを開いて時間を入力させる（シフトはまだ更新しない）
+      const curStart = shifts[dateStr]?.start || settingsAmStart;
+      const curEnd   = shifts[dateStr]?.end   || settingsPmEnd;
+      // prevShift に現在のシフト（full 等）を保存（キャンセル時に戻すため）
+      setCustomTarget({ dateStr, start: curStart, end: curEnd, prevShift: shifts[dateStr] || null });
     } else {
-      // 任意以外はプリセット時間でセット
+      // 任意以外：プリセット時間でセット
       const presetStart = next === 'pm' ? (settings?.['午後開始'] || '13:00') : (settings?.['午前開始'] || '09:00');
       const presetEnd   = next === 'am' ? (settings?.['午前終了'] || '12:00') : (settings?.['午後終了'] || '18:00');
       setShifts(p => ({ ...p, [dateStr]: { type: next, start: presetStart, end: presetEnd } }));
@@ -2003,40 +2015,53 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
 
       {/* ④ 任意時間入力モーダル */}
-      {customTarget && (
-        <Modal title={`⏰ 任意勤務時間の設定（${customTarget.dateStr}）`} onClose={() => setCustomTarget(null)}>
-          <div style={{ padding: '8px 0' }}>
-            <p style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
-              この日の勤務開始・終了時間を自由に設定できます。
-            </p>
-            <table style={S.formTbl}>
-              <tbody>
-                <FormRow label="開始時刻">
-                  <input style={{ ...S.input, width: 120 }} type="time"
-                    value={customTarget.start}
-                    onChange={e => setCustomTarget(p => ({ ...p, start: e.target.value }))} />
-                </FormRow>
-                <FormRow label="終了時刻">
-                  <input style={{ ...S.input, width: 120 }} type="time"
-                    value={customTarget.end}
-                    onChange={e => setCustomTarget(p => ({ ...p, end: e.target.value }))} />
-                </FormRow>
-              </tbody>
-            </table>
-          </div>
-          <div style={S.btnRow}>
-            <Btn v="gray" onClick={() => setCustomTarget(null)}>キャンセル</Btn>
-            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
-              // 入力値をシフトに反映してモーダルを閉じる
-              setShifts(p => ({
-                ...p,
-                [customTarget.dateStr]: { type: 'custom', start: customTarget.start, end: customTarget.end }
-              }));
-              setCustomTarget(null);
-            }}>設定する</Btn>
-          </div>
-        </Modal>
-      )}
+      {customTarget && (() => {
+        // キャンセル時：モーダルを開く前のシフト状態に戻す
+        const handleCancel = () => {
+          if (customTarget.prevShift) {
+            // 元のシフト（fullなど）に戻す
+            setShifts(p => ({ ...p, [customTarget.dateStr]: customTarget.prevShift }));
+          } else {
+            // 元が「なし（off）」だった場合は削除
+            setShifts(p => { const n = { ...p }; delete n[customTarget.dateStr]; return n; });
+          }
+          setCustomTarget(null);
+        };
+        return (
+          <Modal title={`⏰ 任意勤務時間の設定（${customTarget.dateStr}）`} onClose={handleCancel}>
+            <div style={{ padding: '8px 0' }}>
+              <p style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+                この日の勤務開始・終了時間を自由に設定できます。
+              </p>
+              <table style={S.formTbl}>
+                <tbody>
+                  <FormRow label="開始時刻">
+                    <input style={{ ...S.input, width: 120 }} type="time"
+                      value={customTarget.start}
+                      onChange={e => setCustomTarget(p => ({ ...p, start: e.target.value }))} />
+                  </FormRow>
+                  <FormRow label="終了時刻">
+                    <input style={{ ...S.input, width: 120 }} type="time"
+                      value={customTarget.end}
+                      onChange={e => setCustomTarget(p => ({ ...p, end: e.target.value }))} />
+                  </FormRow>
+                </tbody>
+              </table>
+            </div>
+            <div style={S.btnRow}>
+              <Btn v="gray" onClick={handleCancel}>キャンセル</Btn>
+              <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
+                // 入力値をシフトに反映してモーダルを閉じる
+                setShifts(p => ({
+                  ...p,
+                  [customTarget.dateStr]: { type: 'custom', start: customTarget.start, end: customTarget.end }
+                }));
+                setCustomTarget(null);
+              }}>設定する</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
