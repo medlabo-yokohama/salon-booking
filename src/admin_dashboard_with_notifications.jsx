@@ -614,7 +614,7 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
           </FormRow>
           <FormRow label="担当施術者" required>
             <select style={S.input} value={form.staffId} onChange={e => set('staffId', e.target.value)}>
-              <option value="">選択してください</option>
+              <option value="">指名なし（空き優先）</option>
               {staffList.map(s => <option key={s.staffId} value={s.staffId}>{s.name}</option>)}
             </select>
           </FormRow>
@@ -632,7 +632,7 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
       <div style={S.btnRow}>
         <Btn v="gray" onClick={onClose}>キャンセル</Btn>
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
-          if (!form.datetime || !form.staffId || !form.menuId || !form.userName) { setError('必須項目を入力してください'); return; }
+          if (!form.datetime || !form.menuId || !form.userName) { setError('必須項目を入力してください'); return; }
           setLoading(true);
           const res = await apiPost({ action: 'createBooking', ...form });
           if (res.success) { onSave(); onClose(); }
@@ -647,13 +647,29 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
 // ============================================================
 // 施術者管理画面
 // ============================================================
-function StaffScreen({ staffList, menuList, bookings, onRefreshStaff, onShiftPage }) {
+function StaffScreen({ staffList, menuList, bookings, settings, onRefreshStaff, onShiftPage }) {
   const [editStaff, setEditStaff] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // ① 店舗営業時間をsettingsから取得（午前/午後のプリセットに使用）
+  const amStart = settings?.['午前開始'] || '09:00';
+  const amEnd   = settings?.['午前終了'] || '12:00';
+  const pmStart = settings?.['午後開始'] || '13:00';
+  const pmEnd   = settings?.['午後終了'] || '18:00';
+
+  // 施術者の区分選択時のプリセット（午前/午後は営業時間に連動）
+  const PRESETS = {
+    off:    { start: amStart, end: amEnd },
+    am:     { start: amStart, end: amEnd },    // ① 午前 → 店舗の午前時間
+    pm:     { start: pmStart, end: pmEnd },    // ① 午後 → 店舗の午後時間
+    full:   { start: amStart, end: pmEnd },    // 終日 → 午前開始〜午後終了
+    custom: { start: amStart, end: pmEnd },    // 任意 → デフォルトは終日と同じ
+  };
+
   const initSchedule = () => {
     const s = {};
-    ['日','月','火','水','木','金','土'].forEach(d => { s[d] = { type: 'off', start: '09:00', end: '18:00' }; });
+    ['日','月','火','水','木','金','土'].forEach(d => { s[d] = { type: 'off', start: amStart, end: pmEnd }; });
     return s;
   };
   const [newStaff, setNewStaff] = useState({ name: '', menus: [], schedule: initSchedule() });
@@ -846,27 +862,28 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff, onShiftPag
                         <select style={{ ...S.input, fontSize: 11.5 }} value={sched.type}
                           onChange={e => {
                             const t = e.target.value;
-                            const presets = { off: { start:'09:00',end:'18:00' }, am: { start:'09:00',end:'12:00' }, pm: { start:'13:00',end:'18:00' }, full: { start:'09:00',end:'18:00' }, custom: { start:'09:00',end:'18:00' } };
-                            updateSched({ type: t, ...presets[t] });
+                            updateSched({ type: t, ...PRESETS[t] });
                           }}>
                           <option value="off">休み</option>
-                          <option value="am">午前</option>
-                          <option value="pm">午後</option>
-                          <option value="full">終日</option>
+                          <option value="am">午前（{amStart}〜{amEnd}）</option>
+                          <option value="pm">午後（{pmStart}〜{pmEnd}）</option>
+                          <option value="full">終日（{amStart}〜{pmEnd}）</option>
                           <option value="custom">任意</option>
                         </select>
                       </td>
                       <td style={{ border: `1px solid ${C.border}`, padding: '4px 6px' }}>
                         {sched.type !== 'off' && (
-                          <input style={{ ...S.input, fontSize: 11.5 }} type="time" value={sched.start}
-                            disabled={sched.type !== 'custom' && sched.type !== 'am' && sched.type !== 'pm' && sched.type !== 'full'}
+                          <input style={{ ...S.input, fontSize: 11.5, background: sched.type !== 'custom' ? '#f1f5f9' : '#fff' }}
+                            type="time" value={sched.start}
+                            disabled={sched.type !== 'custom'}
                             onChange={e => updateSched({ start: e.target.value })} />
                         )}
                       </td>
                       <td style={{ border: `1px solid ${C.border}`, padding: '4px 6px' }}>
                         {sched.type !== 'off' && (
-                          <input style={{ ...S.input, fontSize: 11.5 }} type="time" value={sched.end}
-                            disabled={sched.type !== 'custom' && sched.type !== 'am' && sched.type !== 'pm' && sched.type !== 'full'}
+                          <input style={{ ...S.input, fontSize: 11.5, background: sched.type !== 'custom' ? '#f1f5f9' : '#fff' }}
+                            type="time" value={sched.end}
+                            disabled={sched.type !== 'custom'}
                             onChange={e => updateSched({ end: e.target.value })} />
                         )}
                       </td>
@@ -913,8 +930,7 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff, onShiftPag
 
       {/* 施術者追加モーダル */}
       {showAdd && (() => {
-        // 一括設定用ヘルパー
-        const PRESETS = { off:{start:'09:00',end:'18:00'}, am:{start:'09:00',end:'12:00'}, pm:{start:'13:00',end:'18:00'}, full:{start:'09:00',end:'18:00'}, custom:{start:'09:00',end:'18:00'} };
+        // ① PRESTSは共通変数（StaffScreen上部で定義済み）を使用
         const setBulk = (type) => {
           const s = initSchedule();
           DAY_NAMES.forEach(d => { s[d] = { type, ...PRESETS[type] }; });
@@ -980,24 +996,26 @@ function StaffScreen({ staffList, menuList, bookings, onRefreshStaff, onShiftPag
                               updateNewSched(day, { type:t, ...PRESETS[t] });
                             }}>
                             <option value="off">休み</option>
-                            <option value="am">午前</option>
-                            <option value="pm">午後</option>
-                            <option value="full">終日</option>
+                            <option value="am">午前（{amStart}〜{amEnd}）</option>
+                            <option value="pm">午後（{pmStart}〜{pmEnd}）</option>
+                            <option value="full">終日（{amStart}〜{pmEnd}）</option>
                             <option value="custom">任意</option>
                           </select>
                         </td>
                         <td style={{ border:`1px solid ${C.border}`, padding:'4px 6px' }}>
                           {sched.type !== 'off' && (
-                            <input style={{ ...S.input, fontSize:11.5 }} type="time" value={sched.start}
-                              readOnly={['am','pm','full'].includes(sched.type)}
-                              onChange={e => sched.type === 'custom' && updateNewSched(day, { start:e.target.value })} />
+                            <input style={{ ...S.input, fontSize:11.5, background: sched.type !== 'custom' ? '#f1f5f9' : '#fff' }}
+                              type="time" value={sched.start}
+                              disabled={sched.type !== 'custom'}
+                              onChange={e => updateNewSched(day, { start:e.target.value })} />
                           )}
                         </td>
                         <td style={{ border:`1px solid ${C.border}`, padding:'4px 6px' }}>
                           {sched.type !== 'off' && (
-                            <input style={{ ...S.input, fontSize:11.5 }} type="time" value={sched.end}
-                              readOnly={['am','pm','full'].includes(sched.type)}
-                              onChange={e => sched.type === 'custom' && updateNewSched(day, { end:e.target.value })} />
+                            <input style={{ ...S.input, fontSize:11.5, background: sched.type !== 'custom' ? '#f1f5f9' : '#fff' }}
+                              type="time" value={sched.end}
+                              disabled={sched.type !== 'custom'}
+                              onChange={e => updateNewSched(day, { end:e.target.value })} />
                           )}
                         </td>
                       </tr>
@@ -1162,6 +1180,8 @@ function StoreScreen({ settings, onSave }) {
     hasBreak:       s['休憩あり'] !== 'false' && (s['休憩時間'] ? true : false),
     breaks:         parseBreaks(s['休憩時間']),
     unitMin:        String(s['施術単位（分）'] || '30'),
+    slotCapacity:   String(s['同時施術人数'] || '1'), // ② 同時施術人数
+    slotCapacityCustom: String(s['同時施術人数カスタム'] || '1'), // ② 任意人数
     refreshSec:     String(s['自動更新間隔（秒）'] || '30'),
   });
 
@@ -1207,6 +1227,7 @@ function StoreScreen({ settings, onSave }) {
       '休憩あり':         String(form.hasBreak),
       '休憩時間':         form.hasBreak ? JSON.stringify(form.breaks) : '[]',
       '施術単位（分）':   form.unitMin,
+      '同時施術人数':     form.slotCapacity === 'custom' ? form.slotCapacityCustom : form.slotCapacity, // ②
       '自動更新間隔（秒）': form.refreshSec,
     });
     setSaved(true);
@@ -1339,6 +1360,29 @@ function StoreScreen({ settings, onSave }) {
             </div>
           </FormRow>
 
+          {/* ② 同時施術人数（1枠あたり何人受け付けるか） */}
+          <FormRow label="同時施術人数">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+              {[{l:'1人',v:'1'},{l:'2人',v:'2'},{l:'3人',v:'3'},{l:'任意',v:'custom'}].map(o => (
+                <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                  <input type="radio" name="capacity" checked={form.slotCapacity === o.v}
+                    onChange={() => setForm(p=>({...p, slotCapacity: o.v}))} /> {o.l}
+                </label>
+              ))}
+              {form.slotCapacity === 'custom' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="number" min="1" max="99" style={{ ...S.input, width: 70 }}
+                    value={form.slotCapacityCustom}
+                    onChange={e => setForm(p=>({...p, slotCapacityCustom: e.target.value}))} />
+                  <span style={{ fontSize: 12.5 }}>人</span>
+                </div>
+              )}
+            </div>
+            <div style={S.note('info')}>
+              現在：<b>1枠あたり {form.slotCapacity === 'custom' ? form.slotCapacityCustom : form.slotCapacity} 人まで予約可能</b>
+            </div>
+          </FormRow>
+
           {/* 自動更新間隔 */}
           <FormRow label="予約画面 自動更新間隔">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
@@ -1359,7 +1403,10 @@ function StoreScreen({ settings, onSave }) {
           closedDatesSet: parseClosedDates(settings['定休日（任意）']||''),
           openStart: settings['営業開始時刻']||'09:00', openEnd: settings['営業終了時刻']||'18:00',
           breaks: parseBreaks(settings['休憩時間']),
-          unitMin: String(settings['施術単位（分）']||'30'), refreshSec: String(settings['自動更新間隔（秒）']||'30'),
+          unitMin: String(settings['施術単位（分）']||'30'),
+          slotCapacity: String(settings['同時施術人数']||'1'),
+          slotCapacityCustom: String(settings['同時施術人数カスタム']||'1'),
+          refreshSec: String(settings['自動更新間隔（秒）']||'30'),
         })}>キャンセル</Btn>
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleSave}>確定</Btn>
       </div>
@@ -1734,6 +1781,8 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
   const [shifts, setShifts] = useState({});
   const [saved, setSaved] = useState('');
   const [loading, setLoading] = useState(false);
+  // ④ 任意時間入力用：選択中の日付と時間モーダル表示フラグ
+  const [customTarget, setCustomTarget] = useState(null); // { dateStr, start, end }
 
   const DAY = ['日','月','火','水','木','金','土'];
   const pn = n => String(n).padStart(2,'0');
@@ -1741,6 +1790,10 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   const today = new Date();
+
+  // ④ 営業時間のデフォルト値（任意時間入力の初期値として使用）
+  const settingsAmStart = settings?.['午前開始'] || '09:00';
+  const settingsPmEnd   = settings?.['午後終了'] || '18:00';
 
   const TYPES = { off: '休み', am: '午前', pm: '午後', full: '終日', custom: '任意' };
   const TYPE_COLORS = { off: '#f8fafc', am: '#eff6ff', pm: '#ecfdf5', full: C.primaryPale, custom: '#fef9c3' };
@@ -1795,9 +1848,20 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
 
   const toggleShift = (dateStr) => {
     const cur = shifts[dateStr]?.type || 'off';
-    const order = ['off', 'am', 'pm', 'full'];
+    // ④ 「休み→午前→午後→終日→任意→休み」の順で循環
+    const order = ['off', 'am', 'pm', 'full', 'custom'];
     const next = order[(order.indexOf(cur) + 1) % order.length];
-    setShifts(p => ({ ...p, [dateStr]: { type: next, start: '09:00', end: '18:00' } }));
+    if (next === 'custom') {
+      // 任意選択時：現在のstart/endを引き継ぎ、時間入力モーダルを開く
+      const curStart = shifts[dateStr]?.start || settingsAmStart;
+      const curEnd   = shifts[dateStr]?.end   || settingsPmEnd;
+      setCustomTarget({ dateStr, start: curStart, end: curEnd });
+    } else {
+      // 任意以外はプリセット時間でセット
+      const presetStart = next === 'pm' ? (settings?.['午後開始'] || '13:00') : (settings?.['午前開始'] || '09:00');
+      const presetEnd   = next === 'am' ? (settings?.['午前終了'] || '12:00') : (settings?.['午後終了'] || '18:00');
+      setShifts(p => ({ ...p, [dateStr]: { type: next, start: presetStart, end: presetEnd } }));
+    }
   };
 
   const handleSave = async () => {
@@ -1864,12 +1928,12 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
 
       {/* 凡例 */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        {Object.entries(TYPES).filter(([t]) => t !== 'custom').map(([t, l]) => (
+        {Object.entries(TYPES).map(([t, l]) => (
           <span key={t} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: TYPE_COLORS[t], border: `1px solid ${C.border}` }}>
             {l}
           </span>
         ))}
-        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで「休み→午前→午後→終日」を切り替え</span>
+        <span style={{ fontSize: 11, color: C.muted }}>※ 日付をクリックで「休み→午前→午後→終日→任意」を切り替え。任意は時間入力モーダルが開きます。</span>
       </div>
 
       {/* 読み込み中 */}
@@ -1899,7 +1963,12 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
                     <div style={{ fontSize:12, fontWeight:700, color: di===0?'#b91c1c':di===6?'#1d4ed8':C.muted }}>{d}</div>
                     {t !== 'off' && (
                       <div style={{ fontSize:10, marginTop:2, color: C.primary, fontWeight:600, lineHeight: 1.3 }}>
-                        {staffName}<br/>{TYPE_LABELS[t]}
+                        {staffName}<br/>
+                        {/* ④ 任意の場合は時間を表示 */}
+                        {t === 'custom'
+                          ? `任意 ${shift?.start||''}〜${shift?.end||''}`
+                          : TYPE_LABELS[t]
+                        }
                       </div>
                     )}
                   </td>
@@ -1932,6 +2001,42 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
         </Btn>
       </div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
+
+      {/* ④ 任意時間入力モーダル */}
+      {customTarget && (
+        <Modal title={`⏰ 任意勤務時間の設定（${customTarget.dateStr}）`} onClose={() => setCustomTarget(null)}>
+          <div style={{ padding: '8px 0' }}>
+            <p style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+              この日の勤務開始・終了時間を自由に設定できます。
+            </p>
+            <table style={S.formTbl}>
+              <tbody>
+                <FormRow label="開始時刻">
+                  <input style={{ ...S.input, width: 120 }} type="time"
+                    value={customTarget.start}
+                    onChange={e => setCustomTarget(p => ({ ...p, start: e.target.value }))} />
+                </FormRow>
+                <FormRow label="終了時刻">
+                  <input style={{ ...S.input, width: 120 }} type="time"
+                    value={customTarget.end}
+                    onChange={e => setCustomTarget(p => ({ ...p, end: e.target.value }))} />
+                </FormRow>
+              </tbody>
+            </table>
+          </div>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setCustomTarget(null)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={() => {
+              // 入力値をシフトに反映してモーダルを閉じる
+              setShifts(p => ({
+                ...p,
+                [customTarget.dateStr]: { type: 'custom', start: customTarget.start, end: customTarget.end }
+              }));
+              setCustomTarget(null);
+            }}>設定する</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2337,7 +2442,7 @@ export default function AdminDashboard() {
             <div style={S.btnRow}><Btn v="primary" onClick={() => setNewBookingInfo({})}>新規予約</Btn></div>
           </div>
         );
-      case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} bookings={bookings} onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))} onShiftPage={(m) => { setShiftMode(m); setCurrentPage('shift'); }} />;
+      case 'staff':   return <StaffScreen staffList={staffList} menuList={menuList} bookings={bookings} settings={settings} onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))} onShiftPage={(m) => { setShiftMode(m); setCurrentPage('shift'); }} />;
       case 'store':   return <StoreScreen settings={settings} onSave={handleSaveSettings} />;
       case 'menu':    return <MenuScreen menuList={menuList} onRefresh={() => apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus))} />;
       case 'message': return <MessageScreen users={[]} />;
