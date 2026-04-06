@@ -300,6 +300,8 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
   const dateStr = `${currentDate.getFullYear()}-${p(currentDate.getMonth()+1)}-${p(currentDate.getDate())}`;
   const dayName = DAY[currentDate.getDay()];
   const [shiftMap, setShiftMap] = useState({}); // { staffId: { type, start, end } }
+  // ② 表示間隔（分）のステート。デフォルトは施術単位に合わせる
+  const [displayInterval, setDisplayInterval] = useState(null);
 
   // 当日のシフトをGoogle Sheetsから読み込む
   useEffect(() => {
@@ -335,6 +337,8 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
   const openStart = settings?.['午前営業'] !== 'false' ? (settings?.['午前開始'] || '09:00') : (settings?.['午後開始'] || '09:00');
   const openEnd   = settings?.['午後営業'] !== 'false' ? (settings?.['午後終了'] || '18:00') : (settings?.['午前終了'] || '18:00');
   const unitMin   = parseInt(settings?.['施術単位（分）'] || '30');
+  // ② 表示間隔：ユーザーが選択した値 or 施術単位のデフォルト
+  const slotMin   = displayInterval ?? unitMin;
   const breaks    = (() => { try { return JSON.parse(settings?.['休憩時間'] || '[]'); } catch { return []; } })();
   const hasBreak  = settings?.['休憩あり'] === 'true';
   const amEnabled = settings?.['午前営業'] !== 'false';
@@ -353,7 +357,7 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
     while (cur < end) {
       const h = Math.floor(cur / 60), m = cur % 60;
       result.push(`${p(h)}:${p(m)}`);
-      cur += unitMin;
+      cur += slotMin; // ② slotMin（表示間隔）を使用
     }
     return result;
   };
@@ -393,16 +397,26 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
       const t = h*60+m;
       return t >= sh*60+sm && t < eh*60+em;
     }
-    return true; // full / custom は全スロット勤務
+    if (shift.type === 'custom') {
+      // ③ 任意設定の場合はshift.start / shift.end を参照する
+      const [sh, sm] = (shift.start || '09:00').split(':').map(Number);
+      const [eh, em] = (shift.end   || '18:00').split(':').map(Number);
+      const [h, m] = slot.split(':').map(Number);
+      const t = h*60+m;
+      return t >= sh*60+sm && t < eh*60+em;
+    }
+    return true; // full は全スロット勤務
   };
 
-  // 予約マップ
+  // 予約マップ（当日分のみ）
   const bookingMap = {};
-  bookings.forEach(b => {
-    const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
-    const time = rawTime.includes(':') && rawTime.indexOf(':') < 2 ? rawTime.padStart(5, '0') : rawTime;
-    bookingMap[`${time}__${b.staffId}`] = b;
-  });
+  bookings
+    .filter(b => b.datetime?.startsWith(dateStr)) // ① 当日分だけに絞る
+    .forEach(b => {
+      const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
+      const time = rawTime.includes(':') && rawTime.indexOf(':') < 2 ? rawTime.padStart(5, '0') : rawTime;
+      bookingMap[`${time}__${b.staffId}`] = b;
+    });
 
   // 凡例
   const legend = [
@@ -414,7 +428,7 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <Btn v="primary" onClick={() => onChangeDate(new Date())}>今日</Btn>
         <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
           onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate()-1); onChangeDate(d); }}>≪</button>
@@ -423,6 +437,22 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
         </span>
         <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 14 }}
           onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate()+1); onChangeDate(d); }}>≫</button>
+        {/* ② 表示間隔切り替えボタン */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 11, color: C.muted, marginRight: 2 }}>表示間隔：</span>
+          {[15, 30, 60, 90].map(min => (
+            <button key={min}
+              style={{
+                padding: '3px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 4,
+                border: `1.5px solid ${slotMin === min ? C.primary : C.border}`,
+                background: slotMin === min ? C.primary : '#fff',
+                color: slotMin === min ? '#fff' : C.text,
+                fontWeight: slotMin === min ? 700 : 400,
+              }}
+              onClick={() => setDisplayInterval(min)}
+            >{min}分</button>
+          ))}
+        </div>
       </div>
 
       {/* 凡例 */}
