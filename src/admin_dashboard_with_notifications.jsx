@@ -25,11 +25,11 @@ const NAV_ITEMS = [
 async function apiGet(params) {
   const url = new URL(GAS_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { redirect: 'follow' });
   return res.json();
 }
 async function apiPost(body) {
-  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) });
+  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' });
   return res.json();
 }
 
