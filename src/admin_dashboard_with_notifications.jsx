@@ -1870,26 +1870,19 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
     const staffName = staff?.name || selectedStaff;
     const yearMonth = `${year}-${pn(month+1)}`;
 
-    // shiftsをJSON文字列として明示的に渡す（GASがネストオブジェクトを確実にパースできるよう）
-    const payload = {
+    const res = await apiPost({
       action: 'saveShifts',
       staffId: selectedStaff,
       staffName,
       yearMonth,
-      shifts: shifts, // オブジェクトのまま渡す（JSON.stringifyはapiPost内で行う）
-      shiftsJson: JSON.stringify(shifts), // 念のため文字列版も同送
-    };
-
-    const res = await apiPost(payload);
+      shifts,
+    });
     if (res.success) {
       setSaved(`${staffName}の${year}年${month+1}月シフトを保存しました（${res.data?.saved || 0}件）`);
       setTimeout(() => setSaved(''), 4000);
-      // 保存後にGASから再読み込みして画面に反映されるか確認
-      apiGet({ action: 'getShifts', staffId: selectedStaff, yearMonth }).then(r => {
-        if (r.success && Object.keys(r.data.shifts || {}).length > 0) {
-          setShifts(r.data.shifts);
-        }
-      });
+      // 保存後にGASから再読み込みして反映確認
+      const r = await apiGet({ action: 'getShifts', staffId: selectedStaff, yearMonth });
+      if (r.success) setShifts(r.data.shifts || {});
     } else {
       alert('保存に失敗しました: ' + (res.error?.message || JSON.stringify(res)));
     }
