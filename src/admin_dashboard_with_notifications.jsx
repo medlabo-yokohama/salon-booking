@@ -236,26 +236,6 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-  return (
-    <div style={S.loginWrap}>
-      <div style={S.loginCard}>
-        <h2 style={{ fontSize: 20, color: C.primary, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>🏥 予約システム</h2>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.muted }}>ログインID（E-Mail）</label>
-        <input style={S.loginInput} type="email" placeholder="〇〇〇@yokohama-isen.ac.jp" />
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.muted }}>パスワード</label>
-        <input style={S.loginInput} type="password" placeholder="パスワードを入力"
-          value={password} onChange={e => setPassword(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-        {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-          <Btn v="gray" style={{ flex: 1 }} onClick={() => setPassword('')}>キャンセル</Btn>
-          <Btn v="primary" style={{ flex: 1 }} onClick={handleLogin}>{loading ? '確認中...' : 'ログイン'}</Btn>
-        </div>
-      </div>
-    </div>
-  );
-
-
 // ============================================================
 // 月カレンダー
 // ============================================================
@@ -862,7 +842,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, onRefreshStaff, 
             </tr>
           ))}
         </tbody>
-      </table>}
+      </table>
 
       <div style={S.btnRow}>
         <Btn v="primary" onClick={() => setShowAdd(true)}>＋ 施術者を追加</Btn>
