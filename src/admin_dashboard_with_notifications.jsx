@@ -7,16 +7,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 const GAS_URL = import.meta.env.VITE_GAS_URL || '';
 
 const NAV_ITEMS = [
-  { key: 'booking',    label: '予約管理画面' },
-  { key: 'staff',      label: '施術者管理画面' },
-  { key: 'store',      label: '店舗管理画面' },
-  { key: 'menu',       label: 'メニュー管理画面' },
-  { key: 'message',    label: 'メッセージ管理画面' },
-  { key: 'users',      label: '利用者管理画面' },
-  { key: 'reminder',   label: 'リマインダー設定' },
-  { key: 'csv',        label: 'CSVエクスポート' },
-  { key: 'shift',      label: 'シフト手動設定' },
-  { key: 'inquiry',    label: '問い合わせ' },
+  { key: 'booking',    label: '予約管理画面',    levels: ['super','admin','viewer'] },
+  { key: 'staff',      label: '施術者管理画面',   levels: ['super','admin'] },
+  { key: 'store',      label: '店舗管理画面',     levels: ['super','admin'] },
+  { key: 'menu',       label: 'メニュー管理画面', levels: ['super','admin'] },
+  { key: 'message',    label: 'メッセージ管理画面', levels: ['super','admin'] },
+  { key: 'users',      label: '利用者管理画面',   levels: ['super','admin'] },
+  { key: 'reminder',   label: 'リマインダー設定', levels: ['super','admin'] },
+  { key: 'csv',        label: 'CSVエクスポート',  levels: ['super','admin'] },
+  { key: 'shift',      label: 'シフト手動設定',   levels: ['super','admin'] },
+  { key: 'admins',     label: '管理者管理',       levels: ['super'] },
+  { key: 'inquiry',    label: '問い合わせ',       levels: ['super','admin','viewer'] },
 ];
 
 // ============================================================
@@ -157,10 +158,20 @@ function Btn({ v = 'primary', onClick, children, style }) {
   return <button style={{ ...S.btn(v), ...style }} onClick={onClick}>{children}</button>;
 }
 
-function SideNav({ current, onChange, onLogout }) {
+function SideNav({ current, onChange, onLogout, adminInfo }) {
   return (
     <nav style={S.sidenav}>
-      {NAV_ITEMS.map(item => (
+      {/* ログイン中の管理者情報 */}
+      <div style={{ padding: '8px 14px 12px', borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
+        <div style={{ fontSize: 10, color: C.muted }}>ログイン中</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: C.primary, wordBreak: 'break-all' }}>{adminInfo?.email}</div>
+        <div style={{ marginTop: 3 }}>
+          <span style={{ ...S.badge(adminInfo?.level === 'super' ? 'green' : adminInfo?.level === 'admin' ? 'blue' : 'gray'), fontSize: 10 }}>
+            {{ super: 'スーパー管理者', admin: '管理者', viewer: '閲覧者' }[adminInfo?.level] || adminInfo?.level}
+          </span>
+        </div>
+      </div>
+      {NAV_ITEMS.filter(item => item.levels.includes(adminInfo?.level)).map(item => (
         <a key={item.key} style={S.navLink(current === item.key)} onClick={() => onChange(item.key)}>{item.label}</a>
       ))}
       <a style={S.navLogout} onClick={onLogout}>ログアウト</a>
@@ -182,20 +193,46 @@ function RefreshBar({ countdown, onManualRefresh }) {
 // ログイン画面
 // ============================================================
 function LoginScreen({ onLogin }) {
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   const handleLogin = async () => {
-    if (!password) { setError('パスワードを入力してください'); return; }
+    if (!email || !password) { setError('メールアドレスとパスワードを入力してください'); return; }
     setLoading(true);
     try {
-      const res = await apiPost({ action: 'adminLogin', password });
-      if (res.success) { onLogin(); }
-      else { setError(res.error?.message || 'パスワードが違います'); }
+      const res = await apiPost({ action: 'adminLogin', email, password });
+      if (res.success) {
+        onLogin({ adminId: res.data.adminId, email: res.data.email, level: res.data.level });
+      } else {
+        setError(res.error?.message || 'ログインに失敗しました');
+      }
     } catch { setError('通信エラーが発生しました'); }
     setLoading(false);
   };
+
+  return (
+    <div style={S.loginWrap}>
+      <div style={S.loginCard}>
+        <h2 style={{ fontSize: 20, color: C.primary, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>🏥 予約システム</h2>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.muted }}>メールアドレス</label>
+        <input style={S.loginInput} type="email" placeholder="〇〇〇@yokohama-isen.ac.jp"
+          value={email} onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.muted }}>パスワード</label>
+        <input style={S.loginInput} type="password" placeholder="パスワードを入力"
+          value={password} onChange={e => setPassword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <Btn v="gray" style={{ flex: 1 }} onClick={() => { setEmail(''); setPassword(''); }}>クリア</Btn>
+          <Btn v="primary" style={{ flex: 1 }} onClick={handleLogin}>{loading ? '確認中...' : 'ログイン'}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div style={S.loginWrap}>
@@ -2271,6 +2308,192 @@ function MessageScreen({ userList }) {
   );
 }
 
+// ============================================================
+// 管理者管理画面
+// ============================================================
+function AdminManageScreen({ currentAdminInfo }) {
+  const [admins, setAdmins]         = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [showAdd, setShowAdd]       = useState(false);
+  const [changeTarget, setChangeTarget] = useState(null); // パスワード変更対象
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [newAdmin, setNewAdmin]     = useState({ email: '', password: '', level: 'admin' });
+  const [newPassword, setNewPassword] = useState('');
+  const [saved, setSaved]           = useState('');
+  const [addLoading, setAddLoading] = useState(false);
+
+  const fetchAdmins = async () => {
+    setLoading(true);
+    const res = await apiPost({ action: 'getAdminList' });
+    if (res.success) setAdmins(res.data.admins);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchAdmins(); }, []);
+
+  const showMsg = (msg) => { setSaved(msg); setTimeout(() => setSaved(''), 4000); };
+
+  const handleAdd = async () => {
+    if (!newAdmin.email || !newAdmin.password) { alert('メールアドレスとパスワードは必須です'); return; }
+    setAddLoading(true);
+    const res = await apiPost({ action: 'addAdmin', ...newAdmin });
+    if (res.success) {
+      showMsg('管理者を追加しました');
+      fetchAdmins();
+      setShowAdd(false);
+      setNewAdmin({ email: '', password: '', level: 'admin' });
+    } else {
+      alert('追加に失敗しました: ' + (res.error?.message || ''));
+    }
+    setAddLoading(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (!newPassword) { alert('新しいパスワードを入力してください'); return; }
+    const res = await apiPost({ action: 'changeAdminPassword', adminId: changeTarget.adminId, newPassword });
+    if (res.success) {
+      showMsg(`${changeTarget.email} のパスワードを変更しました`);
+      setChangeTarget(null);
+      setNewPassword('');
+    } else {
+      alert('変更に失敗しました: ' + (res.error?.message || ''));
+    }
+  };
+
+  const handleDelete = async () => {
+    const res = await apiPost({ action: 'deleteAdmin', adminId: deleteTarget.adminId });
+    if (res.success) {
+      showMsg(`${deleteTarget.email} を削除しました`);
+      fetchAdmins();
+      setDeleteTarget(null);
+    } else {
+      alert('削除に失敗しました: ' + (res.error?.message || ''));
+    }
+  };
+
+  const levelLabel = { super: 'スーパー管理者', admin: '管理者', viewer: '閲覧者' };
+  const levelBadge = { super: 'green', admin: 'blue', viewer: 'gray' };
+
+  return (
+    <div>
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>👤 管理者管理</h2>
+      </div>
+      <div style={S.note('warn')}>
+        💡 スーパー管理者のみがこの画面を操作できます。スーパー管理者は最低1名必要です。
+      </div>
+
+      {saved && <div style={{ ...S.note('success'), marginTop: 8 }}>✅ {saved}</div>}
+
+      {loading ? <p>読み込み中...</p> : (
+        <table style={{ ...S.gridTbl, marginTop: 16 }}>
+          <thead>
+            <tr>
+              {['メールアドレス','権限','登録日時','操作'].map(h => <th key={h} style={S.th}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {admins.map(a => (
+              <tr key={a.adminId} style={{ background: a.email === currentAdminInfo?.email ? '#eff6ff' : '#fff' }}>
+                <td style={S.td}>
+                  {a.email}
+                  {a.email === currentAdminInfo?.email && <span style={{ ...S.badge('blue'), marginLeft: 6, fontSize: 10 }}>自分</span>}
+                </td>
+                <td style={S.td}><span style={S.badge(levelBadge[a.level] || 'gray')}>{levelLabel[a.level] || a.level}</span></td>
+                <td style={S.td}>{a.createdAt}</td>
+                <td style={S.td}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Btn v="outline" style={{ fontSize: 11, padding: '3px 10px' }}
+                      onClick={() => { setChangeTarget(a); setNewPassword(''); }}>
+                      PW変更
+                    </Btn>
+                    {a.email !== currentAdminInfo?.email && (
+                      <Btn v="danger" style={{ fontSize: 11, padding: '3px 10px' }}
+                        onClick={() => setDeleteTarget(a)}>
+                        削除
+                      </Btn>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div style={S.btnRow}>
+        <Btn v="primary" onClick={() => setShowAdd(true)}>＋ 管理者を追加</Btn>
+      </div>
+
+      {/* 管理者追加モーダル */}
+      {showAdd && (
+        <Modal title="管理者を追加" onClose={() => setShowAdd(false)}>
+          <table style={S.formTbl}>
+            <tbody>
+              <FormRow label="メールアドレス" required>
+                <input style={S.input} type="email" placeholder="admin@example.com"
+                  value={newAdmin.email} onChange={e => setNewAdmin(p => ({ ...p, email: e.target.value }))} />
+              </FormRow>
+              <FormRow label="パスワード" required>
+                <input style={S.input} type="password" placeholder="8文字以上推奨"
+                  value={newAdmin.password} onChange={e => setNewAdmin(p => ({ ...p, password: e.target.value }))} />
+              </FormRow>
+              <FormRow label="権限レベル" required>
+                <div style={{ display: 'flex', gap: 20 }}>
+                  {[{v:'super',l:'スーパー管理者'},{v:'admin',l:'管理者'},{v:'viewer',l:'閲覧者'}].map(o => (
+                    <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+                      <input type="radio" checked={newAdmin.level === o.v}
+                        onChange={() => setNewAdmin(p => ({ ...p, level: o.v }))} /> {o.l}
+                    </label>
+                  ))}
+                </div>
+              </FormRow>
+            </tbody>
+          </table>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleAdd}>
+              {addLoading ? '追加中...' : '追加する'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* パスワード変更モーダル */}
+      {changeTarget && (
+        <Modal title={`🔑 パスワード変更：${changeTarget.email}`} onClose={() => setChangeTarget(null)}>
+          <table style={S.formTbl}>
+            <tbody>
+              <FormRow label="新しいパスワード" required>
+                <input style={S.input} type="password" placeholder="新しいパスワードを入力"
+                  value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+              </FormRow>
+            </tbody>
+          </table>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setChangeTarget(null)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleChangePassword}>変更する</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 削除確認モーダル */}
+      {deleteTarget && (
+        <Modal title="管理者を削除" onClose={() => setDeleteTarget(null)}>
+          <p style={{ fontSize: 13, marginBottom: 16 }}>
+            <b>「{deleteTarget.email}」</b>を削除しますか？<br />
+            <span style={{ color: C.danger, fontSize: 12 }}>この操作は元に戻せません。</span>
+          </p>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setDeleteTarget(null)}>キャンセル</Btn>
+            <Btn v="danger" style={{ marginLeft: 'auto' }} onClick={handleDelete}>削除する</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function UsersScreen() {
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState('');
@@ -2386,7 +2609,8 @@ function UsersScreen() {
 // メインコンポーネント
 // ============================================================
 export default function AdminDashboard() {
-  const [isLoggedIn, setIsLoggedIn]   = useState(false);
+  const [adminInfo, setAdminInfo] = useState(null);
+  const isLoggedIn = !!adminInfo;
   const [currentPage, setCurrentPage] = useState('booking');
   const [viewMode, setViewMode]       = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -2454,7 +2678,7 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+  if (!isLoggedIn) return <LoginScreen onLogin={(info) => setAdminInfo(info)} />;
 
   const renderContent = () => {
     switch (currentPage) {
@@ -2488,6 +2712,7 @@ export default function AdminDashboard() {
       case 'reminder':  return <ReminderScreen settings={settings} onSave={handleSaveSettings} />;
       case 'csv':       return <CsvExportScreen bookings={bookings} staffList={staffList} menuList={menuList} />;
       case 'shift':     return <ShiftScreen staffList={staffList} settings={settings} initialMode={shiftMode} onBack={() => setCurrentPage('staff')} />;
+      case 'admins': return <AdminManageScreen currentAdminInfo={adminInfo} />;
       case 'inquiry':   return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
       default: return null;
     }
@@ -2496,7 +2721,7 @@ export default function AdminDashboard() {
   return (
     <div style={S.app}>
       <div style={S.layout}>
-        <SideNav current={currentPage} onChange={setCurrentPage} onLogout={() => setIsLoggedIn(false)} />
+        <SideNav current={currentPage} onChange={setCurrentPage} onLogout={() => setAdminInfo(null)} adminInfo={adminInfo} />
         <main style={S.main}>{renderContent()}</main>
       </div>
 
