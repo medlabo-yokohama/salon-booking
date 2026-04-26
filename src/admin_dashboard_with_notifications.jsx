@@ -409,14 +409,16 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
   };
 
   // 予約マップ（当日分のみ）
-  const bookingMap = {};
-  bookings
-    .filter(b => b.datetime?.startsWith(dateStr)) // ① 当日分だけに絞る
-    .forEach(b => {
-      const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
-      const time = rawTime.includes(':') && rawTime.indexOf(':') < 2 ? rawTime.padStart(5, '0') : rawTime;
-      bookingMap[`${time}__${b.staffId}`] = b;
-    });
+const bookingMap = {};
+bookings
+  .filter(b => b.datetime?.startsWith(dateStr))
+  .forEach(b => {
+    const rawTime = b.datetime?.split(' ')[1]?.substring(0, 5) || '';
+    const time = rawTime.includes(':') && rawTime.indexOf(':') < 2 ? rawTime.padStart(5, '0') : rawTime;
+    const key = `${time}__${b.staffId}`;
+    if (!bookingMap[key]) bookingMap[key] = [];
+    bookingMap[key].push(b);
+  });
 
   // 凡例
   const legend = [
@@ -493,7 +495,6 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
                 <tr key={slot}>
                   <td style={{ background: '#f8fafc', fontSize: 11.5, color: C.muted, textAlign: 'center', fontFamily: 'monospace', border: `1px solid ${C.border}`, padding: '3px 4px', height: 40, verticalAlign: 'middle' }}>{slot}</td>
                   {staffList.map(s => {
-                    const booking = bookingMap[`${slot}__${s.staffId}`];
                     const working = isWorking(s.staffId, slot);
                     const base = { border: `1px solid ${C.border}`, height: 40, padding: '3px 6px', verticalAlign: 'top', fontSize: 11, transition: 'background .1s' };
 
@@ -504,17 +505,28 @@ function CalDay({ bookings, staffList, menuList, settings, currentDate, onChange
                       </td>
                     );
 
-                    // 予約あり
-                    if (booking) {
-                      const mName = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
+                    // 予約あり（複数対応）
+                    const bookingList = bookingMap[`${slot}__${s.staffId}`];
+                    if (bookingList && bookingList.length > 0) {
                       return (
-                        <td key={s.staffId} style={{ ...base, background: '#dbeafe', cursor: 'pointer', border: `1.5px solid ${C.primary}` }}
-                          onClick={() => onSelectBooking(booking)}>
-                          <div style={{ fontWeight: 700, color: C.primary, fontSize: 11 }}>{booking.userName}</div>
-                          <div style={{ color: '#1e40af', fontSize: 10 }}>{mName}</div>
-                        </td>
-                      );
-                    }
+                        <td key={s.staffId} style={{ ...base, background: '#dbeafe', border: `1.5px solid ${C.primary}`, verticalAlign: 'top', padding: '2px 4px' }}>
+                          {bookingList.map((booking, idx) => {
+                             const mName = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
+                             const staffName = staffList.find(st => st.staffId === booking.staffId)?.name || '';
+                             return (
+                              <div key={idx} onClick={() => onSelectBooking(booking)}
+                                style={{ cursor: 'pointer', borderBottom: idx < bookingList.length - 1 ? `1px solid ${C.border}` : 'none', paddingBottom: idx < bookingList.length - 1 ? 2 : 0, marginBottom: idx < bookingList.length - 1 ? 2 : 0 }}>
+                                <div style={{ fontWeight: 700, color: C.primary, fontSize: 11 }}>{booking.userName}</div>
+                                 <div style={{ color: '#1e40af', fontSize: 10 }}>{mName}</div>
+                                <div style={{ color: C.muted, fontSize: 10 }}>
+                                   {booking.staffId ? `指名：${staffName}` : '指名なし'}
+                                </div>
+                               </div>
+                             );
+                           })}
+                         </td>
+                        );
+                     }
 
                     // 休み（シフトなし）
                     if (!working) return (
