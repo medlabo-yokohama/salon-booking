@@ -202,7 +202,9 @@ function LoginScreen({ onLogin }) {
     if (!email || !password) { setError('メールアドレスとパスワードを入力してください'); return; }
     setLoading(true);
     try {
+      console.log('送信データ:', { action: 'adminLogin', email, password });
       const res = await apiPost({ action: 'adminLogin', email, password });
+      console.log('レスポンス:', res);
       if (res.success) {
         onLogin({ adminId: res.data.adminId, email: res.data.email, level: res.data.level });
       } else {
