@@ -650,8 +650,15 @@ function NewBookingModal({ defaultDate, defaultSlot, defaultStaffId, staffList, 
             </select>
           </FormRow>
           <FormRow label="コース" required>
-            <select style={S.input} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
-              {menuList.map(m => <option key={m.menuId} value={m.menuId}>{m.name}（{m.durationMin}分）</option>)}
+          <select style={S.input} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
+              {(form.staffId
+              ? menuList.filter(m => {
+                 const staff = staffList.find(s => s.staffId === form.staffId);
+                if (!staff || !staff.menus) return true;
+                return staff.menus.split(',').map(x => x.trim()).includes(m.menuId);
+                })
+              : menuList
+            ).map(m => <option key={m.menuId} value={m.menuId}>{m.name}（{m.durationMin}分）</option>)}
             </select>
           </FormRow>
           <FormRow label="顧客名" required><input style={S.input} type="text" placeholder="山田太郎" value={form.userName} onChange={e => set('userName', e.target.value)} /></FormRow>
