@@ -492,7 +492,13 @@ bookings
           <thead>
             <tr>
               <th style={{ background: '#374151', color: '#fff', width: 68, padding: '6px 4px', textAlign: 'center', fontSize: 12, border: `1px solid ${C.border}` }}>時間</th>
-              {staffList.map(s => {
+              <th style={{ background: '#64748b', color: '#fff', padding: '6px 8px', textAlign: 'center', fontSize: 12, border: `1px solid ${C.border}`, minWidth: 100 }}>
+                <div style={{ fontWeight: 700 }}>指名なし</div>
+                <div style={{ fontSize: 10, marginTop: 2, opacity: 0.85, background: 'rgba(255,255,255,.2)', borderRadius: 3, padding: '1px 4px', display: 'inline-block' }}>
+                🟡 受付対応
+                </div>
+             </th>
+             {staffList.map(s => {
                 const shift = shiftMap[s.staffId];
                 const isOff = !shift || shift.type === 'off';
                 const shiftLabel = shift ? ({ am:'午前', pm:'午後', full:'終日', custom:'任意', off:'休み' }[shift.type] || '') : '未設定';
@@ -513,7 +519,42 @@ bookings
               return (
                 <tr key={slot}>
                   <td style={{ background: '#f8fafc', fontSize: 11.5, color: C.muted, textAlign: 'center', fontFamily: 'monospace', border: `1px solid ${C.border}`, padding: '3px 4px', height: 40, verticalAlign: 'middle' }}>{slot}</td>
-                  {staffList.map(s => {
+                  {(() => {
+                      const noStaffBookings = bookingMap[`${slot}__`] || [];
+                      const base = { border: `1px solid ${C.border}`, height: 40, padding: '3px 6px', verticalAlign: 'top', fontSize: 11, transition: 'background .1s' };
+                      if (inBreak) return (
+                        <td key="nostaff" style={{ ...base, background: '#fef3c7' }}>
+                         <span style={{ fontSize: 10, color: '#92400e' }}>🌙 休憩</span>
+                         </td>
+                        );
+                         if (noStaffBookings.length > 0) {
+                          return (
+                          <td key="nostaff" style={{ ...base, background: '#dbeafe', border: `1.5px solid ${C.primary}`, padding: '2px 4px' }}>
+                          {noStaffBookings.map((booking, idx) => {
+                             const mName = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
+                             return (
+                             <div key={idx} onClick={() => onSelectBooking(booking)}
+                             style={{ cursor: 'pointer', borderBottom: idx < noStaffBookings.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                             <div style={{ fontWeight: 700, color: C.primary, fontSize: 11 }}>{booking.userName}</div>
+                             <div style={{ color: '#1e40af', fontSize: 10 }}>{mName}</div>
+                             <div style={{ color: C.muted, fontSize: 10 }}>指名なし</div>
+                           </div>
+                          );
+                     })}
+                    </td>
+                  );
+               }
+               return (
+               <td key="nostaff"
+                 style={{ ...base, background: '#fff', border: `1.5px solid ${C.success}`, cursor: 'pointer' }}
+                 onClick={() => onSelectEmpty(dateStr, slot, '')}
+                 onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                 <span style={{ fontSize: 10, color: C.success }}>＋</span>
+                </td>
+               );
+             })()}
+{staffList.map(s => {
                     const working = isWorking(s.staffId, slot);
                     const base = { border: `1px solid ${C.border}`, height: 40, padding: '3px 6px', verticalAlign: 'top', fontSize: 11, transition: 'background .1s' };
 
