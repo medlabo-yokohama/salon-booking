@@ -621,8 +621,9 @@ bookings
 // ============================================================
 function BookingDetailModal({ booking, staffList, menuList, onClose, onCancel, onUpdate }) {
   const [note, setNote] = useState(booking.note || '');
+  const [staffId, setStaffId] = useState(booking.staffId || '');
   const [loading, setLoading] = useState(false);
-  const staffName = staffList.find(s => s.staffId === booking.staffId)?.name || booking.staffId;
+  const staffName = staffList.find(s => s.staffId === booking.staffId)?.name || '指名なし';
   const menuName  = menuList.find(m => m.menuId === booking.menuId)?.name || booking.menuId;
 
   return (
@@ -632,11 +633,23 @@ function BookingDetailModal({ booking, staffList, menuList, onClose, onCancel, o
           <FormRow label="予約ID">{booking.bookingId}</FormRow>
           <FormRow label="日時">{fmtDatetime(booking.datetime)}</FormRow>
           <FormRow label="顧客名">{booking.userName}</FormRow>
-          <FormRow label="担当施術者">{staffName}</FormRow>
+          <FormRow label="担当施術者">
+            <select style={S.input} value={staffId} onChange={e => setStaffId(e.target.value)}>
+              <option value="">指名なし</option>
+              {staffList.map(s => <option key={s.staffId} value={s.staffId}>{s.name}</option>)}
+            </select>
+            {staffId !== (booking.staffId || '') && (
+              <div style={{ fontSize: 11, color: C.warning, marginTop: 4 }}>
+                ⚠️ 変更あり（保存ボタンで確定）
+              </div>
+            )}
+          </FormRow>
           <FormRow label="コース">{menuName}</FormRow>
           <FormRow label="電話番号">{fmtPhone(booking.userPhone)}</FormRow>
           <FormRow label="E-Mail">{booking.userEmail || '—'}</FormRow>
-          <FormRow label="ステータス"><span style={S.badge(booking.status === '確定' ? 'green' : 'gray')}>{booking.status}</span></FormRow>
+          <FormRow label="ステータス">
+            <span style={S.badge(booking.status === '確定' ? 'green' : 'gray')}>{booking.status}</span>
+          </FormRow>
           <FormRow label="要望・備考">
             <textarea style={{ ...S.input, height: 60 }} value={note} onChange={e => setNote(e.target.value)} />
           </FormRow>
@@ -653,7 +666,7 @@ function BookingDetailModal({ booking, staffList, menuList, onClose, onCancel, o
         <Btn v="gray" onClick={onClose}>閉じる</Btn>
         <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={async () => {
           setLoading(true);
-          await onUpdate(booking.bookingId, { note });
+          await onUpdate(booking.bookingId, { note, staffId });
           setLoading(false);
           onClose();
         }}>保存</Btn>
