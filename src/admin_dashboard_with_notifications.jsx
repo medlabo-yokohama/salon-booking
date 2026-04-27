@@ -2702,10 +2702,10 @@ export default function AdminDashboard() {
     await apiPost({ action: 'cancelBooking', bookingId });
     fetchBookings();
   };
-  const handleUpdateBooking = async (bookingId, updates) => {
-    await apiPost({ action: 'updateBooking', bookingId, ...updates });
-    fetchBookings();
-  };
+   const handleUpdateBooking = async (bookingId, updates) => {
+      await apiPost({ action: 'updateBooking', bookingId, ...updates });
+      fetchBookings();
+   };
   const handleSaveSettings = async (updates) => {
     const res = await apiPost({ action: 'updateSettings', settings: updates });
     if (res.success) {
