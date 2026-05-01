@@ -716,6 +716,104 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
 }
 
 // ============================================================
+// ログインコンポーネント（ブラウザ版）
+// ============================================================
+function LoginPage({ onBack, onLoggedIn }) {
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw,   setShowPw]   = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password) { setError('メールアドレスとパスワードを入力してください'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiPost({ action: 'loginUser', email: email.trim(), password });
+      if (res.success) {
+        // ログイン成功：ユーザー情報をメインコンポーネントへ通知
+        onLoggedIn(res.data);
+      } else {
+        setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません');
+      }
+    } catch (e) {
+      setError('通信エラーが発生しました');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={S.wrap}>
+      <div style={S.header}>
+        <button onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>
+          ‹
+        </button>
+        <h3 style={S.headerTitle}>ログイン</h3>
+      </div>
+
+      <div style={S.body}>
+        <div style={{ ...S.note, marginBottom: 20 }}>
+          利用者登録時のメールアドレスとパスワードでログインできます
+        </div>
+
+        {error && (
+          <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 16 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        <label style={S.label}>メールアドレス<span style={S.required}>*</span></label>
+        <input
+          style={S.formInput}
+          type="email"
+          placeholder="yamada@example.com"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+        />
+
+        <label style={S.label}>パスワード<span style={S.required}>*</span></label>
+        <div style={{ position: 'relative', marginBottom: 12 }}>
+          <input
+            style={{ ...S.formInput, marginBottom: 0, paddingRight: 40 }}
+            type={showPw ? 'text' : 'password'}
+            placeholder="パスワードを入力"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          />
+          <button
+            onClick={() => setShowPw(v => !v)}
+            type="button"
+            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: C.muted, padding: 0 }}>
+            {showPw ? '🙈' : '👁'}
+          </button>
+        </div>
+
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          style={{ ...S.btn('primary'), opacity: loading ? 0.7 : 1, marginTop: 8 }}>
+          {loading ? 'ログイン中...' : '🔑 ログインする'}
+        </button>
+
+        {/* 新規登録へのリンク */}
+        <div style={{ textAlign: 'center', marginTop: 8, fontSize: 13, color: C.muted }}>
+          アカウントをお持ちでない方は
+          <span
+            onClick={onBack}
+            style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', marginLeft: 4, textDecoration: 'underline' }}>
+            新規登録
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // ブラウザ用：予約検索画面
 // ============================================================
 function BookingSearch({ onFound, onBack }) {
@@ -1458,7 +1556,7 @@ export default function LineLiffBooking() {
   const [completed, setCompleted]           = useState(null);
   const [calDate, setCalDate]               = useState(new Date());
   const [availLoading, setAvailLoading]     = useState(false);
-  // 画面切り替え： 'booking' | 'mypage' | 'search' | 'searchResult' | 'register'
+  // 画面切り替え： 'booking' | 'mypage' | 'search' | 'searchResult' | 'register' | 'login'
   const [screen, setScreen]                 = useState('booking');
   // ブラウザ検索で見つかった予約
   const [searchedBookings, setSearchedBookings] = useState([]);
@@ -1562,6 +1660,25 @@ export default function LineLiffBooking() {
   const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
   // ─── 画面切り替え ───
+
+  // ブラウザ版：ログイン画面
+  if (screen === 'login') {
+    return (
+      <LoginPage
+        onBack={() => setScreen('booking')}
+        onLoggedIn={(data) => {
+          // ログイン成功：フォームに情報を反映して予約画面へ
+          setForm({
+            name:  data.name  || '',
+            phone: data.phone || '',
+            email: data.email || '',
+          });
+          setRegisteredUser({ name: data.name, phone: data.phone, email: data.email });
+          setScreen('booking');
+        }}
+      />
+    );
+  }
 
   // 利用者登録画面
   if (screen === 'register') {
@@ -1675,8 +1792,47 @@ export default function LineLiffBooking() {
           }}>
           📋 予約確認
         </button>
-        {/* 新規登録ボタン（未登録ユーザー向け） */}
-        {!registeredUser && (
+        {/* 未登録かつブラウザ経由の場合：ログイン・新規登録ボタンを表示 */}
+        {!registeredUser && !lineProfile && (
+          <>
+            <button
+              onClick={() => setScreen('login')}
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                border: '1.5px solid rgba(255,255,255,0.6)',
+                borderRadius: 6,
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '4px 8px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                marginLeft: 4,
+              }}>
+              🔑 ログイン
+            </button>
+            <button
+              onClick={() => setScreen('register')}
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                border: '1.5px solid rgba(255,255,255,0.6)',
+                borderRadius: 6,
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '4px 8px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                marginLeft: 4,
+              }}>
+              📝 新規登録
+            </button>
+          </>
+        )}
+        {/* LINE未登録の場合：新規登録ボタンのみ表示 */}
+        {!registeredUser && lineProfile && (
           <button
             onClick={() => setScreen('register')}
             style={{
@@ -1686,7 +1842,7 @@ export default function LineLiffBooking() {
               color: '#fff',
               fontSize: 11,
               fontWeight: 700,
-              padding: '4px 10px',
+              padding: '4px 8px',
               cursor: 'pointer',
               fontFamily: 'inherit',
               whiteSpace: 'nowrap',
@@ -1694,6 +1850,12 @@ export default function LineLiffBooking() {
             }}>
             📝 新規登録
           </button>
+        )}
+        {/* ログイン済みの場合：名前を表示 */}
+        {registeredUser && !lineProfile && (
+          <span style={{ fontSize: 11, opacity: 0.85, whiteSpace: 'nowrap' }}>
+            {registeredUser.name} 様
+          </span>
         )}
       </div>
 
@@ -1793,17 +1955,30 @@ export default function LineLiffBooking() {
                   fontSize: 11.5,
                   marginBottom: 12,
                   color: '#92400e',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
                 }}>
-                  <span>利用者登録すると次回から自動入力されます</span>
-                  <span
-                    onClick={() => setScreen('register')}
-                    style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', textDecoration: 'underline', fontSize: 12 }}>
-                    登録する →
-                  </span>
+                  <div style={{ marginBottom: 6 }}>利用者登録すると次回から自動入力されます</div>
+                  {/* ブラウザ版のみログイン・新規登録リンクを表示 */}
+                  {!lineProfile && (
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <span
+                        onClick={() => setScreen('login')}
+                        style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
+                        🔑 ログイン
+                      </span>
+                      <span
+                        onClick={() => setScreen('register')}
+                        style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
+                        📝 新規登録
+                      </span>
+                    </div>
+                  )}
+                  {lineProfile && (
+                    <span
+                      onClick={() => setScreen('register')}
+                      style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
+                      登録する →
+                    </span>
+                  )}
                 </div>
               )
             }
