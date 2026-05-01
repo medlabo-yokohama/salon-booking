@@ -1,6 +1,7 @@
 // ============================================================
-// line_liff_booking_v3.jsx
+// line_liff_booking_v4.jsx
 // LINE LIFF予約UI（月カレンダー形式・空き状況○△×表示）
+// v4: 予約確認UI・キャンセル機能・コース選択UI改善
 // ============================================================
 import React, { useState, useEffect } from 'react';
 
@@ -26,7 +27,9 @@ const C = {
   primary: '#1a4f8a',
   primaryPale: '#dbeafe',
   success: '#059669',
+  successPale: '#d1fae5',
   danger: '#dc2626',
+  dangerPale: '#fee2e2',
   warning: '#f59e0b',
   border: '#cbd5e1',
   text: '#1e293b',
@@ -72,8 +75,10 @@ const S = {
     const variants = {
       primary: { background: C.primary, color: '#fff' },
       success: { background: C.success, color: '#fff' },
-      gray: { background: '#e2e8f0', color: C.text },
-      line: { background: '#06C755', color: '#fff' },
+      danger:  { background: C.danger,  color: '#fff' },
+      gray:    { background: '#e2e8f0', color: C.text },
+      line:    { background: '#06C755', color: '#fff' },
+      outline: { background: '#fff', color: C.primary, border: `1.5px solid ${C.primary}` },
     };
     return {
       width: '100%',
@@ -146,16 +151,414 @@ const STEPS = [
 // ============================================================
 // 空き状況を○△×に変換するヘルパー
 // ============================================================
-/**
- * その日の空きスロット数から○△×を判定する
- * @param {number} slotCount - 空きスロット数
- * @param {number} threshold - △になる閾値（デフォルト2）
- * @returns {{ mark: string, color: string, label: string }}
- */
 function getAvailMark(slotCount, threshold = 2) {
   if (slotCount === 0) return { mark: '×', color: C.danger,  label: '満席' };
   if (slotCount <= threshold) return { mark: '△', color: C.warning, label: '残りわずか' };
   return { mark: '○', color: C.success, label: '空きあり' };
+}
+
+// ============================================================
+// 予約ステータスのバッジ表示ヘルパー
+// ============================================================
+function StatusBadge({ status }) {
+  const config = {
+    '予約済み': { bg: C.primaryPale, color: C.primary, icon: '📅' },
+    'キャンセル': { bg: C.dangerPale, color: C.danger, icon: '✕' },
+    '完了': { bg: C.successPale, color: C.success, icon: '✓' },
+  };
+  const c = config[status] || { bg: '#f1f5f9', color: C.muted, icon: '?' };
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 3,
+      background: c.bg,
+      color: c.color,
+      borderRadius: 20,
+      padding: '2px 10px',
+      fontSize: 11,
+      fontWeight: 700,
+    }}>
+      {c.icon} {status || '予約済み'}
+    </span>
+  );
+}
+
+// ============================================================
+// キャンセル確認モーダル
+// ============================================================
+function CancelModal({ booking, onConfirm, onClose, loading }) {
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      padding: '0 16px',
+    }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: 12,
+        padding: '24px 20px',
+        maxWidth: 360,
+        width: '100%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+      }}>
+        {/* アイコン */}
+        <div style={{ textAlign: 'center', fontSize: 40, marginBottom: 12 }}>⚠️</div>
+        <h3 style={{ textAlign: 'center', fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+          予約をキャンセルしますか？
+        </h3>
+        <p style={{ textAlign: 'center', fontSize: 12, color: C.muted, marginBottom: 16 }}>
+          この操作は元に戻せません
+        </p>
+        {/* キャンセル対象の予約情報 */}
+        <div style={{
+          background: '#f8fafc',
+          border: `1px solid ${C.border}`,
+          borderRadius: 8,
+          padding: '12px 14px',
+          marginBottom: 20,
+          fontSize: 13,
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: '6px 0' }}>
+            <span style={{ color: C.muted }}>日時</span>
+            <span style={{ fontWeight: 600 }}>{booking.datetime}</span>
+            <span style={{ color: C.muted }}>コース</span>
+            <span style={{ fontWeight: 600 }}>{booking.menu || '—'}</span>
+            <span style={{ color: C.muted }}>担当者</span>
+            <span style={{ fontWeight: 600 }}>{booking.staff || '指名なし'}</span>
+          </div>
+        </div>
+        {/* ボタン */}
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          style={{
+            ...S.btn('danger'),
+            marginBottom: 8,
+            opacity: loading ? 0.7 : 1,
+          }}>
+          {loading ? 'キャンセル中...' : 'キャンセルする'}
+        </button>
+        <button
+          onClick={onClose}
+          disabled={loading}
+          style={{ ...S.btn('gray'), marginBottom: 0 }}>
+          戻る
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 予約カードコンポーネント（マイページ用）
+// ============================================================
+function BookingCard({ booking, onCancelClick }) {
+  // 予約日時が過去かどうかを判定してキャンセルボタンの表示を制御
+  const isPast = () => {
+    if (!booking.datetime) return false;
+    const bookingDate = new Date(booking.datetime.replace(' ', 'T'));
+    return bookingDate < new Date();
+  };
+
+  const canCancel = booking.status !== 'キャンセル' && booking.status !== '完了' && !isPast();
+
+  return (
+    <div style={{
+      ...S.card,
+      borderLeft: booking.status === 'キャンセル'
+        ? `4px solid ${C.danger}`
+        : booking.status === '完了'
+          ? `4px solid ${C.success}`
+          : `4px solid ${C.primary}`,
+    }}>
+      {/* ヘッダー行：日時とステータス */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>
+            {booking.datetime}
+          </div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+            予約ID: {booking.bookingId}
+          </div>
+        </div>
+        <StatusBadge status={booking.status} />
+      </div>
+
+      {/* 予約内容 */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '70px 1fr',
+        gap: '5px 0',
+        fontSize: 13,
+        marginBottom: canCancel ? 12 : 0,
+      }}>
+        <span style={{ color: C.muted }}>コース</span>
+        <span style={{ fontWeight: 600 }}>{booking.menu || '—'}</span>
+        <span style={{ color: C.muted }}>担当者</span>
+        <span style={{ fontWeight: 600 }}>{booking.staff || '指名なし'}</span>
+        {booking.notes && (
+          <>
+            <span style={{ color: C.muted }}>備考</span>
+            <span>{booking.notes}</span>
+          </>
+        )}
+      </div>
+
+      {/* キャンセルボタン */}
+      {canCancel && (
+        <button
+          onClick={() => onCancelClick(booking)}
+          style={{
+            width: '100%',
+            padding: '8px',
+            border: `1.5px solid ${C.danger}`,
+            borderRadius: 6,
+            background: '#fff',
+            color: C.danger,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}>
+          🗑 この予約をキャンセルする
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// マイページ（予約確認）コンポーネント
+// ============================================================
+function MyPage({ lineProfile, onBack }) {
+  const [bookings, setBookings]           = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [cancelTarget, setCancelTarget]   = useState(null);  // キャンセル対象の予約
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelDone, setCancelDone]       = useState(false);
+  const [error, setError]                 = useState('');
+  const [filter, setFilter]               = useState('upcoming'); // 'upcoming' | 'all'
+
+  // 予約一覧を取得
+  const fetchBookings = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiGet({
+        action: 'getUserBookings',
+        lineUserId: lineProfile?.userId || '',
+      });
+      if (res.success) {
+        setBookings(res.data.bookings || []);
+      } else {
+        setError('予約の取得に失敗しました');
+      }
+    } catch (e) {
+      setError('通信エラーが発生しました');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchBookings();
+  }, []);
+
+  // キャンセル実行
+  const handleCancel = async () => {
+    if (!cancelTarget) return;
+    setCancelLoading(true);
+    setError('');
+    try {
+      const res = await apiPost({
+        action: 'cancelBooking',
+        bookingId: cancelTarget.bookingId,
+        lineUserId: lineProfile?.userId || '',
+      });
+      if (res.success) {
+        setCancelDone(true);
+        // 一覧を再取得して最新状態に更新
+        await fetchBookings();
+        // モーダルを閉じる
+        setTimeout(() => {
+          setCancelTarget(null);
+          setCancelDone(false);
+        }, 1500);
+      } else {
+        setError(res.error?.message || 'キャンセルに失敗しました');
+        setCancelTarget(null);
+      }
+    } catch (e) {
+      setError('通信エラーが発生しました');
+      setCancelTarget(null);
+    }
+    setCancelLoading(false);
+  };
+
+  // フィルタリング：今後の予約のみ or 全件
+  const now = new Date();
+  const filteredBookings = bookings.filter(b => {
+    if (filter === 'all') return true;
+    // 'upcoming'：キャンセル・完了を除いた未来の予約
+    if (b.status === 'キャンセル' || b.status === '完了') return false;
+    const d = new Date((b.datetime || '').replace(' ', 'T'));
+    return d >= now;
+  });
+
+  return (
+    <div style={S.wrap}>
+      {/* ヘッダー */}
+      <div style={S.header}>
+        <button
+          onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>
+          ‹
+        </button>
+        <h3 style={S.headerTitle}>予約確認</h3>
+        {lineProfile && (
+          <span style={{ fontSize: 11, opacity: 0.8 }}>{lineProfile.displayName} 様</span>
+        )}
+      </div>
+
+      <div style={S.body}>
+        {/* フィルタータブ */}
+        <div style={{
+          display: 'flex',
+          gap: 0,
+          marginBottom: 16,
+          border: `1.5px solid ${C.primary}`,
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}>
+          {[
+            { key: 'upcoming', label: '今後の予約' },
+            { key: 'all',      label: 'すべて表示' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                border: 'none',
+                background: filter === tab.key ? C.primary : '#fff',
+                color: filter === tab.key ? '#fff' : C.primary,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'all 0.15s',
+              }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* エラー表示 */}
+        {error && (
+          <div style={{
+            background: C.dangerPale,
+            border: `1px solid ${C.danger}`,
+            borderRadius: 8,
+            padding: '10px 14px',
+            fontSize: 13,
+            color: C.danger,
+            marginBottom: 12,
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {/* 読み込み中 */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>📅</div>
+            <div>予約を読み込み中...</div>
+          </div>
+        ) : filteredBookings.length === 0 ? (
+          /* 予約なし */
+          <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              {filter === 'upcoming' ? '今後の予約はありません' : '予約履歴がありません'}
+            </div>
+            {filter === 'upcoming' && bookings.length > 0 && (
+              <div style={{ fontSize: 12, marginTop: 8 }}>
+                <span
+                  onClick={() => setFilter('all')}
+                  style={{ color: C.primary, textDecoration: 'underline', cursor: 'pointer' }}>
+                  過去の予約を確認する
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* 予約一覧 */
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+              {filteredBookings.length}件の予約
+            </div>
+            {filteredBookings.map(b => (
+              <BookingCard
+                key={b.bookingId}
+                booking={b}
+                onCancelClick={setCancelTarget}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* 新規予約ボタン */}
+        <div style={{ marginTop: 16 }}>
+          <button style={S.btn('primary')} onClick={onBack}>
+            ＋ 新しく予約する
+          </button>
+        </div>
+      </div>
+
+      {/* キャンセル確認モーダル */}
+      {cancelTarget && !cancelDone && (
+        <CancelModal
+          booking={cancelTarget}
+          onConfirm={handleCancel}
+          onClose={() => setCancelTarget(null)}
+          loading={cancelLoading}
+        />
+      )}
+
+      {/* キャンセル完了モーダル */}
+      {cancelDone && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: 12,
+            padding: '32px 24px',
+            textAlign: 'center',
+            maxWidth: 300,
+            width: '90%',
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.success }}>
+              キャンセルしました
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ============================================================
@@ -374,6 +777,81 @@ function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot,
 }
 
 // ============================================================
+// コース選択ラジオボタン（スマホ最適化）
+// ============================================================
+function MenuRadioItem({ menu, selected, onClick }) {
+  const isSelected = selected === menu.menuId;
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: '14px 16px',
+        borderRadius: 10,
+        background: isSelected ? C.primaryPale : '#f8fafc',
+        border: `2px solid ${isSelected ? C.primary : C.border}`,
+        marginBottom: 10,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        WebkitTapHighlightColor: 'transparent', // スマホのタップ時のハイライト除去
+      }}>
+      {/* カスタムラジオボタン */}
+      <div style={{
+        width: 22,
+        height: 22,
+        borderRadius: '50%',
+        border: `2.5px solid ${isSelected ? C.primary : C.border}`,
+        background: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'all 0.15s',
+      }}>
+        {/* 選択時は内側に塗りつぶした円（●）を表示 */}
+        {isSelected && (
+          <div style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            background: C.primary,
+          }} />
+        )}
+      </div>
+
+      {/* コース情報 */}
+      <div style={{ flex: 1 }}>
+        <div style={{
+          fontSize: 14,
+          fontWeight: isSelected ? 700 : 600,
+          color: isSelected ? C.primary : C.text,
+          marginBottom: 2,
+        }}>
+          {menu.name}
+        </div>
+        <div style={{ fontSize: 12, color: C.muted }}>
+          ⏱ {menu.durationMin}分
+        </div>
+      </div>
+
+      {/* 選択済みチェックマーク */}
+      {isSelected && (
+        <div style={{
+          color: C.primary,
+          fontSize: 18,
+          fontWeight: 700,
+          flexShrink: 0,
+        }}>
+          ✓
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // メインコンポーネント
 // ============================================================
 export default function LineLiffBooking() {
@@ -394,6 +872,8 @@ export default function LineLiffBooking() {
   const [calDate, setCalDate]               = useState(new Date());
   // 空き状況の読み込み中フラグ
   const [availLoading, setAvailLoading]     = useState(false);
+  // マイページ（予約確認）表示フラグ
+  const [showMyPage, setShowMyPage]         = useState(false);
 
   // 指名なし判定（'any' または 未選択）
   const isNoStaff = !selection.staffId || selection.staffId === 'any';
@@ -500,11 +980,20 @@ export default function LineLiffBooking() {
 
   // 選択済み情報の表示名
   const selectedMenu      = menuList.find(m => m.menuId === selection.menuId);
-  // 'any'（指名なし）の場合はstaffListに存在しないのでundefinedになるため、個別に対応
   const selectedStaff     = isNoStaff ? null : staffList.find(s => s.staffId === selection.staffId);
   const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
-  // 完了画面
+  // ─── マイページ表示 ───
+  if (showMyPage) {
+    return (
+      <MyPage
+        lineProfile={lineProfile}
+        onBack={() => setShowMyPage(false)}
+      />
+    );
+  }
+
+  // ─── 完了画面 ───
   if (completed) {
     return (
       <div style={S.wrap}>
@@ -524,6 +1013,13 @@ export default function LineLiffBooking() {
           }}>
             最初に戻る
           </button>
+          {/* 完了後に予約確認画面へのリンク */}
+          <button style={S.btn('outline')} onClick={() => {
+            setCompleted(null);
+            setShowMyPage(true);
+          }}>
+            📋 予約を確認する
+          </button>
         </div>
       </div>
     );
@@ -534,6 +1030,23 @@ export default function LineLiffBooking() {
       <div style={S.header}>
         <h3 style={S.headerTitle}>🏥 ご予約</h3>
         {lineProfile && <span style={{ fontSize: 11, opacity: 0.8 }}>{lineProfile.displayName} 様</span>}
+        {/* マイページボタン */}
+        <button
+          onClick={() => setShowMyPage(true)}
+          style={{
+            background: 'rgba(255,255,255,0.2)',
+            border: '1.5px solid rgba(255,255,255,0.6)',
+            borderRadius: 6,
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '4px 10px',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            whiteSpace: 'nowrap',
+          }}>
+          📋 予約確認
+        </button>
       </div>
 
       <div style={S.body}>
@@ -550,19 +1063,20 @@ export default function LineLiffBooking() {
           ))}
         </div>
 
-        {/* ─── Step 1: コース選択 ─── */}
+        {/* ─── Step 1: コース選択（ラジオボタンUI改善） ─── */}
         {step === 1 && (
           <div>
-            <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>① コースを選んでください</h3>
+            <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 4 }}>① コースを選んでください</h3>
+            <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+              ご希望のコースをタップしてください
+            </p>
             {menuList.map(m => (
-              <div key={m.menuId} style={S.step(selection.menuId === m.menuId)}
-                onClick={() => { set('menuId', m.menuId); setStep(2); }}>
-                <span style={S.stepNum(selection.menuId === m.menuId)}>●</span>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{m.name}</div>
-                  <div style={{ fontSize: 11.5, color: C.muted }}>{m.durationMin}分</div>
-                </div>
-              </div>
+              <MenuRadioItem
+                key={m.menuId}
+                menu={m}
+                selected={selection.menuId}
+                onClick={() => { set('menuId', m.menuId); setStep(2); }}
+              />
             ))}
           </div>
         )}
@@ -607,7 +1121,7 @@ export default function LineLiffBooking() {
                 onChangeMonth={handleChangeMonth}
                 onSelectDate={(dateStr) => {
                   set('date', dateStr);
-                  set('slot', ''); // 日付変更時はスロットをリセット
+                  set('slot', '');
                 }}
               />
             )}
@@ -625,7 +1139,7 @@ export default function LineLiffBooking() {
               }}
             />
 
-            {/* 次へボタン（日付とスロットが選択済みの場合のみ有効） */}
+            {/* 次へボタン */}
             {selection.date && selection.slot && (
               <button style={{ ...S.btn('primary'), marginTop: 16 }} onClick={() => setStep(4)}>
                 次へ →
