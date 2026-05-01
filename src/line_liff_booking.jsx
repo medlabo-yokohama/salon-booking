@@ -397,6 +397,8 @@ export default function LineLiffBooking() {
 
   // 指名なし判定（'any' または 未選択）
   const isNoStaff = !selection.staffId || selection.staffId === 'any';
+const selectedStaff = isNoStaff ? null : staffList.find(s => s.staffId === selection.staffId);
+const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
   // LIFF初期化
   useEffect(() => {
