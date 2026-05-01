@@ -395,6 +395,9 @@ export default function LineLiffBooking() {
   // 空き状況の読み込み中フラグ
   const [availLoading, setAvailLoading]     = useState(false);
 
+  // 指名なし判定（'any' または 未選択）
+  const isNoStaff = !selection.staffId || selection.staffId === 'any';
+
   // LIFF初期化
   useEffect(() => {
     const initLiff = async () => {
@@ -466,10 +469,12 @@ export default function LineLiffBooking() {
   const handleSubmit = async () => {
     if (!form.name) { setError('お名前は必須です'); return; }
     setLoading(true);
+    // 指名なし（'any'）の場合は空文字を送信してGAS側でnullとして扱う
+    const staffIdToSend = isNoStaff ? '' : selection.staffId;
     const res = await apiPost({
       action: 'createBooking',
       datetime: `${selection.date} ${selection.slot}`,
-      staffId: selection.staffId === 'any' ? '' : selection.staffId,
+      staffId: staffIdToSend,
       menuId: selection.menuId,
       userName: form.name,
       userPhone: form.phone,
@@ -494,8 +499,10 @@ export default function LineLiffBooking() {
   };
 
   // 選択済み情報の表示名
-  const selectedMenu  = menuList.find(m => m.menuId === selection.menuId);
-  const selectedStaff = staffList.find(s => s.staffId === selection.staffId);
+  const selectedMenu      = menuList.find(m => m.menuId === selection.menuId);
+  // 'any'（指名なし）の場合はstaffListに存在しないのでundefinedになるため、個別に対応
+  const selectedStaff     = isNoStaff ? null : staffList.find(s => s.staffId === selection.staffId);
+  const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
   // 完了画面
   if (completed) {
@@ -661,9 +668,7 @@ export default function LineLiffBooking() {
                 <span style={{ color: C.muted }}>コース</span>
                 <span style={{ fontWeight: 600 }}>{selectedMenu?.name}</span>
                 <span style={{ color: C.muted }}>担当者</span>
-                <span style={{ fontWeight: 600 }}>
-                  {selection.staffId === 'any' ? '指名なし' : selectedStaff?.name}
-                </span>
+                <span style={{ fontWeight: 600 }}>{selectedStaffName}</span>
                 <span style={{ color: C.muted }}>日時</span>
                 <span style={{ fontWeight: 600 }}>{selection.date} {selection.slot}</span>
                 <span style={{ color: C.muted }}>お名前</span>
