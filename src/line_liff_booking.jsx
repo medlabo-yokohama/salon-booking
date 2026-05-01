@@ -424,8 +424,7 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
       });
       if (res.success) {
         setRegStep(3);
-        // 登録完了をメインコンポーネントに通知（フォーム自動入力用）
-        if (onRegistered) onRegistered({ name: regForm.name, email: regForm.email, phone: regForm.phone });
+        // ※ onRegisteredは完了画面の「予約画面へ進む」ボタンで呼ぶ
       } else {
         // メール重複などのエラーを表示
         setError(res.error?.message || '登録に失敗しました');
@@ -463,7 +462,11 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
               ? 'LINEアカウントと紐付けが完了しました。次回からは情報が自動入力されます。'
               : '登録したメールアドレスとパスワードで予約確認が行えます。'}
           </div>
-          <button style={S.btn('primary')} onClick={onBack}>
+          <button style={S.btn('primary')} onClick={() => {
+            // 登録完了をメインコンポーネントに通知してフォーム自動入力
+            if (onRegistered) onRegistered({ name: regForm.name, email: regForm.email, phone: regForm.phone });
+            onBack();
+          }}>
             予約画面へ進む
           </button>
         </div>
@@ -1567,13 +1570,15 @@ export default function LineLiffBooking() {
         lineProfile={lineProfile}
         onBack={() => setScreen('booking')}
         onRegistered={(data) => {
-          // 登録完了後、予約フォームへ情報を自動入力して予約画面へ戻る
-          setForm(prev => ({
-            name:  data.name  || prev.name,
-            phone: data.phone || prev.phone,
-            email: data.email || prev.email,
-          }));
-          setScreen('booking');
+          // 登録完了後、予約フォームへ情報を自動入力
+          setForm({
+            name:  data.name  || '',
+            phone: data.phone || '',
+            email: data.email || '',
+          });
+          // registeredUserを更新して「登録済み」状態にする
+          setRegisteredUser({ name: data.name, phone: data.phone, email: data.email });
+          // ※ onBackは呼ばずここでsetScreen（二重呼び出し防止）
         }}
       />
     );
