@@ -16,7 +16,7 @@ async function apiGet(params) {
   return (await fetch(url.toString())).json();
 }
 async function apiPost(body) {
-  return (await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) })).json();
+  return (await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' })).json();
 }
 
 // ============================================================
