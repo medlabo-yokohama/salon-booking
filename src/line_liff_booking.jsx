@@ -395,10 +395,6 @@ export default function LineLiffBooking() {
   // 空き状況の読み込み中フラグ
   const [availLoading, setAvailLoading]     = useState(false);
 
-  // 指名なし判定（'any' または 未選択）
-  const isNoStaff = !selection.staffId || selection.staffId === 'any';
-const selectedStaff = isNoStaff ? null : staffList.find(s => s.staffId === selection.staffId);
-const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
   // LIFF初期化
   useEffect(() => {
@@ -500,11 +496,11 @@ const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '
     setLoading(false);
   };
 
-  // 選択済み情報の表示名
-  const selectedMenu      = menuList.find(m => m.menuId === selection.menuId);
-  // 'any'（指名なし）の場合はstaffListに存在しないのでundefinedになるため、個別に対応
-  const selectedStaff     = isNoStaff ? null : staffList.find(s => s.staffId === selection.staffId);
-  const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
+// 指名なし判定（'any' または 未選択）
+const isNoStaff = !selection.staffId || selection.staffId === 'any';
+const selectedMenu = menuList.find(m => m.menuId === selection.menuId);
+const selectedStaff = isNoStaff ? null : staffList.find(s => s.staffId === selection.staffId);
+const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
   // 完了画面
   if (completed) {
