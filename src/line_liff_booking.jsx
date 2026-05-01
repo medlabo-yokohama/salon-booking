@@ -1,7 +1,7 @@
 // ============================================================
-// line_liff_booking_v5.jsx
+// line_liff_booking_v6.jsx
 // LINE LIFF予約UI（月カレンダー形式・空き状況○△×表示）
-// v5: ブラウザ対応・予約ID or メール検索・個別/一括キャンセル
+// v6: 利用者登録画面追加（氏名・ふりがな・生年月日・電話・メール・PW）
 // ============================================================
 import React, { useState, useEffect } from 'react';
 
@@ -356,6 +356,356 @@ function BookingCard({ booking, onCancelClick, selectable, selected, onToggle })
               🗑 この予約をキャンセルする
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 利用者登録コンポーネント
+// ============================================================
+function RegisterPage({ lineProfile, onBack, onRegistered }) {
+  // フォームの状態
+  const [regForm, setRegForm] = useState({
+    name:      '',
+    nameKana:  '',
+    birthdate: '',
+    phone:     '',
+    email:     '',
+    password:  '',
+    passwordConfirm: '',
+  });
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState('');
+  const [showPw,    setShowPw]    = useState(false); // パスワード表示切替
+  const [showPwC,   setShowPwC]   = useState(false); // 確認PW表示切替
+  const [regStep,   setRegStep]   = useState(1);     // 1:入力 / 2:確認 / 3:完了
+
+  const setR = (key, val) => setRegForm(prev => ({ ...prev, [key]: val }));
+
+  // ─── バリデーション ───
+  const validate = () => {
+    if (!regForm.name.trim())     return '氏名を入力してください';
+    if (!regForm.nameKana.trim()) return 'ふりがなを入力してください';
+    // ふりがなはひらがなのみ許可
+    if (!/^[ぁ-んー　 ]+$/.test(regForm.nameKana.trim())) return 'ふりがなはひらがなで入力してください';
+    if (!regForm.email.trim())    return 'メールアドレスを入力してください';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email)) return 'メールアドレスの形式が正しくありません';
+    if (!regForm.password)        return 'パスワードを入力してください';
+    if (regForm.password.length < 8) return 'パスワードは8文字以上で入力してください';
+    if (regForm.password !== regForm.passwordConfirm) return 'パスワードが一致しません';
+    return null;
+  };
+
+  // ─── 確認画面へ進む ───
+  const handleToConfirm = () => {
+    const err = validate();
+    if (err) { setError(err); return; }
+    setError('');
+    setRegStep(2);
+  };
+
+  // ─── 登録実行 ───
+  const handleRegister = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiPost({
+        action:    'registerUser',
+        name:      regForm.name.trim(),
+        nameKana:  regForm.nameKana.trim(),
+        birthdate: regForm.birthdate || '',
+        phone:     regForm.phone.trim(),
+        email:     regForm.email.trim(),
+        password:  regForm.password,
+        // LINE経由の場合はlineUserIdを自動紐付け
+        lineUserId: lineProfile?.userId || '',
+      });
+      if (res.success) {
+        setRegStep(3);
+        // 登録完了をメインコンポーネントに通知（フォーム自動入力用）
+        if (onRegistered) onRegistered({ name: regForm.name, email: regForm.email, phone: regForm.phone });
+      } else {
+        // メール重複などのエラーを表示
+        setError(res.error?.message || '登録に失敗しました');
+        setRegStep(1);
+      }
+    } catch (e) {
+      setError('通信エラーが発生しました');
+      setRegStep(1);
+    }
+    setLoading(false);
+  };
+
+  // ─── 共通スタイル ───
+  const inputWrap = { position: 'relative', marginBottom: 12 };
+  const eyeBtn = {
+    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
+    color: C.muted, padding: 0,
+  };
+
+  // ─── 完了画面 ───
+  if (regStep === 3) {
+    return (
+      <div style={S.wrap}>
+        <div style={S.header}>
+          <h3 style={S.headerTitle}>利用者登録</h3>
+        </div>
+        <div style={{ ...S.body, textAlign: 'center', paddingTop: 48 }}>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.primary, marginBottom: 12 }}>
+            登録が完了しました
+          </h3>
+          <div style={{ ...S.note, textAlign: 'left', marginBottom: 20 }}>
+            {lineProfile
+              ? 'LINEアカウントと紐付けが完了しました。次回からは情報が自動入力されます。'
+              : '登録したメールアドレスとパスワードで予約確認が行えます。'}
+          </div>
+          <button style={S.btn('primary')} onClick={onBack}>
+            予約画面へ進む
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── 確認画面 ───
+  if (regStep === 2) {
+    return (
+      <div style={S.wrap}>
+        <div style={S.header}>
+          <button onClick={() => setRegStep(1)}
+            style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>
+            ‹
+          </button>
+          <h3 style={S.headerTitle}>登録内容の確認</h3>
+        </div>
+        <div style={S.body}>
+          <div style={{ ...S.note, marginBottom: 20 }}>
+            以下の内容で登録します。ご確認ください。
+          </div>
+          <div style={S.card}>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '10px 0', fontSize: 13 }}>
+              <span style={{ color: C.muted }}>氏名</span>
+              <span style={{ fontWeight: 600 }}>{regForm.name}</span>
+              <span style={{ color: C.muted }}>ふりがな</span>
+              <span>{regForm.nameKana}</span>
+              <span style={{ color: C.muted }}>生年月日</span>
+              <span>{regForm.birthdate || '—'}</span>
+              <span style={{ color: C.muted }}>電話番号</span>
+              <span>{regForm.phone || '—'}</span>
+              <span style={{ color: C.muted }}>メール</span>
+              <span style={{ wordBreak: 'break-all' }}>{regForm.email}</span>
+              <span style={{ color: C.muted }}>パスワード</span>
+              <span>{'●'.repeat(Math.min(regForm.password.length, 10))}</span>
+              {lineProfile && (
+                <>
+                  <span style={{ color: C.muted }}>LINE連携</span>
+                  <span style={{ color: C.success, fontWeight: 600 }}>✓ 紐付けあり</span>
+                </>
+              )}
+            </div>
+          </div>
+          {error && (
+            <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 12 }}>
+              ⚠️ {error}
+            </div>
+          )}
+          <button
+            style={{ ...S.btn('success'), opacity: loading ? 0.7 : 1 }}
+            onClick={handleRegister}
+            disabled={loading}>
+            {loading ? '登録中...' : '✅ この内容で登録する'}
+          </button>
+          <button style={S.btn('gray')} onClick={() => setRegStep(1)} disabled={loading}>
+            ← 修正する
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── 入力画面（regStep === 1） ───
+  return (
+    <div style={S.wrap}>
+      <div style={S.header}>
+        <button onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>
+          ‹
+        </button>
+        <h3 style={S.headerTitle}>利用者登録</h3>
+      </div>
+
+      <div style={S.body}>
+        {/* LINE連携バナー */}
+        {lineProfile && (
+          <div style={{
+            background: '#f0fdf4',
+            border: `1px solid ${C.success}`,
+            borderRadius: 8,
+            padding: '10px 14px',
+            marginBottom: 16,
+            fontSize: 12,
+            color: C.success,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <span style={{ fontSize: 18 }}>✓</span>
+            <span>LINEアカウント（{lineProfile.displayName}）と自動で紐付けされます</span>
+          </div>
+        )}
+
+        {/* エラー表示 */}
+        {error && (
+          <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 16 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {/* 氏名 */}
+        <label style={S.label}>氏名<span style={S.required}>*</span></label>
+        <input
+          style={S.formInput}
+          type="text"
+          placeholder="横浜　太郎"
+          value={regForm.name}
+          onChange={e => setR('name', e.target.value)}
+        />
+
+        {/* ふりがな */}
+        <label style={S.label}>ふりがな<span style={S.required}>*</span></label>
+        <input
+          style={S.formInput}
+          type="text"
+          placeholder="よこはま　たろう"
+          value={regForm.nameKana}
+          onChange={e => setR('nameKana', e.target.value)}
+        />
+
+        {/* 生年月日 */}
+        <label style={S.label}>生年月日</label>
+        <input
+          style={S.formInput}
+          type="date"
+          value={regForm.birthdate}
+          onChange={e => setR('birthdate', e.target.value)}
+          max={new Date().toISOString().split('T')[0]}
+        />
+
+        {/* 電話番号 */}
+        <label style={S.label}>電話番号</label>
+        <input
+          style={S.formInput}
+          type="tel"
+          placeholder="09012345678"
+          value={regForm.phone}
+          onChange={e => setR('phone', e.target.value)}
+        />
+
+        {/* メールアドレス */}
+        <label style={S.label}>メールアドレス<span style={S.required}>*</span></label>
+        <input
+          style={S.formInput}
+          type="email"
+          placeholder="yamada@example.com"
+          value={regForm.email}
+          onChange={e => setR('email', e.target.value)}
+        />
+
+        {/* パスワード */}
+        <label style={S.label}>パスワード<span style={S.required}>*</span>
+          <span style={{ fontWeight: 400, marginLeft: 6 }}>（8文字以上）</span>
+        </label>
+        <div style={inputWrap}>
+          <input
+            style={{ ...S.formInput, marginBottom: 0, paddingRight: 40 }}
+            type={showPw ? 'text' : 'password'}
+            placeholder="8文字以上で入力"
+            value={regForm.password}
+            onChange={e => setR('password', e.target.value)}
+          />
+          <button style={eyeBtn} onClick={() => setShowPw(v => !v)} type="button">
+            {showPw ? '🙈' : '👁'}
+          </button>
+        </div>
+
+        {/* パスワード強度インジケーター */}
+        {regForm.password && (
+          <div style={{ marginTop: 4, marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              {[1, 2, 3, 4].map(level => {
+                const len = regForm.password.length;
+                const hasUpper  = /[A-Z]/.test(regForm.password);
+                const hasNum    = /[0-9]/.test(regForm.password);
+                const hasSym    = /[^A-Za-z0-9]/.test(regForm.password);
+                const strength  = (len >= 8 ? 1 : 0) + (hasUpper ? 1 : 0) + (hasNum ? 1 : 0) + (hasSym ? 1 : 0);
+                const colors    = ['#e2e8f0', C.danger, C.warning, C.warning, C.success];
+                return (
+                  <div key={level} style={{
+                    flex: 1, height: 4, borderRadius: 2,
+                    background: level <= strength ? colors[strength] : '#e2e8f0',
+                    transition: 'background 0.3s',
+                  }} />
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: C.muted }}>
+              {(() => {
+                const len = regForm.password.length;
+                const hasUpper = /[A-Z]/.test(regForm.password);
+                const hasNum   = /[0-9]/.test(regForm.password);
+                const hasSym   = /[^A-Za-z0-9]/.test(regForm.password);
+                const strength = (len >= 8 ? 1 : 0) + (hasUpper ? 1 : 0) + (hasNum ? 1 : 0) + (hasSym ? 1 : 0);
+                return ['', '弱い', '普通', '強い', 'とても強い'][strength] || '';
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* パスワード確認 */}
+        <label style={S.label}>パスワード（確認）<span style={S.required}>*</span></label>
+        <div style={inputWrap}>
+          <input
+            style={{
+              ...S.formInput,
+              marginBottom: 0,
+              paddingRight: 40,
+              // 一致・不一致を色で表示
+              borderColor: regForm.passwordConfirm
+                ? (regForm.password === regForm.passwordConfirm ? C.success : C.danger)
+                : C.border,
+            }}
+            type={showPwC ? 'text' : 'password'}
+            placeholder="もう一度入力"
+            value={regForm.passwordConfirm}
+            onChange={e => setR('passwordConfirm', e.target.value)}
+          />
+          <button style={eyeBtn} onClick={() => setShowPwC(v => !v)} type="button">
+            {showPwC ? '🙈' : '👁'}
+          </button>
+        </div>
+        {/* 一致・不一致メッセージ */}
+        {regForm.passwordConfirm && (
+          <div style={{
+            fontSize: 11,
+            color: regForm.password === regForm.passwordConfirm ? C.success : C.danger,
+            marginTop: 4,
+            marginBottom: 12,
+          }}>
+            {regForm.password === regForm.passwordConfirm ? '✓ 一致しています' : '✗ パスワードが一致しません'}
+          </div>
+        )}
+
+        <div style={{ marginTop: 8 }}>
+          <button style={S.btn('primary')} onClick={handleToConfirm}>
+            確認画面へ →
+          </button>
+          <button style={S.btn('gray')} onClick={onBack}>
+            ← 戻る
+          </button>
         </div>
       </div>
     </div>
@@ -1105,7 +1455,7 @@ export default function LineLiffBooking() {
   const [completed, setCompleted]           = useState(null);
   const [calDate, setCalDate]               = useState(new Date());
   const [availLoading, setAvailLoading]     = useState(false);
-  // 画面切り替え： 'booking' | 'mypage' | 'search' | 'searchResult'
+  // 画面切り替え： 'booking' | 'mypage' | 'search' | 'searchResult' | 'register'
   const [screen, setScreen]                 = useState('booking');
   // ブラウザ検索で見つかった予約
   const [searchedBookings, setSearchedBookings] = useState([]);
@@ -1210,6 +1560,25 @@ export default function LineLiffBooking() {
 
   // ─── 画面切り替え ───
 
+  // 利用者登録画面
+  if (screen === 'register') {
+    return (
+      <RegisterPage
+        lineProfile={lineProfile}
+        onBack={() => setScreen('booking')}
+        onRegistered={(data) => {
+          // 登録完了後、予約フォームへ情報を自動入力して予約画面へ戻る
+          setForm(prev => ({
+            name:  data.name  || prev.name,
+            phone: data.phone || prev.phone,
+            email: data.email || prev.email,
+          }));
+          setScreen('booking');
+        }}
+      />
+    );
+  }
+
   // LINE経由：マイページ（lineUserIdで自動取得）
   if (screen === 'mypage') {
     return (
@@ -1301,6 +1670,26 @@ export default function LineLiffBooking() {
           }}>
           📋 予約確認
         </button>
+        {/* 新規登録ボタン（未登録ユーザー向け） */}
+        {!registeredUser && (
+          <button
+            onClick={() => setScreen('register')}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: '1.5px solid rgba(255,255,255,0.6)',
+              borderRadius: 6,
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '4px 10px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+              marginLeft: 4,
+            }}>
+            📝 新規登録
+          </button>
+        )}
       </div>
 
       <div style={S.body}>
@@ -1388,7 +1777,31 @@ export default function LineLiffBooking() {
         {step === 4 && (
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>④ ご情報を入力してください</h3>
-            {registeredUser && <div style={S.note}>✅ 登録済み情報から自動入力しました</div>}
+            {registeredUser
+              ? <div style={S.note}>✅ 登録済み情報から自動入力しました</div>
+              : (
+                <div style={{
+                  background: '#fffbeb',
+                  borderLeft: `4px solid ${C.warning}`,
+                  padding: '8px 12px',
+                  borderRadius: '0 4px 4px 0',
+                  fontSize: 11.5,
+                  marginBottom: 12,
+                  color: '#92400e',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <span>利用者登録すると次回から自動入力されます</span>
+                  <span
+                    onClick={() => setScreen('register')}
+                    style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', textDecoration: 'underline', fontSize: 12 }}>
+                    登録する →
+                  </span>
+                </div>
+              )
+            }
             <label style={S.label}>お名前<span style={S.required}>*</span></label>
             <input style={S.formInput} type="text" placeholder="山田太郎"
               value={form.name} onChange={e => setF('name', e.target.value)} />
