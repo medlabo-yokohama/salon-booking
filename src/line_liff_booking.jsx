@@ -1,6 +1,6 @@
 // ============================================================
 // line_liff_booking_v3.jsx
-// LINE LIFF予約UI（利用者登録・自動入力対応）
+// LINE LIFF予約UI（月カレンダー形式・空き状況○△×表示）
 // ============================================================
 import React, { useState, useEffect } from 'react';
 
@@ -20,26 +20,116 @@ async function apiPost(body) {
 }
 
 // ============================================================
-// スタイル（顧客向けと共通のスマホUI）
+// スタイル定義
 // ============================================================
-const C = { primary: '#1a4f8a', primaryPale: '#dbeafe', success: '#059669', danger: '#dc2626', warning: '#f59e0b', border: '#cbd5e1', text: '#1e293b', muted: '#64748b', surface: '#fff' };
+const C = {
+  primary: '#1a4f8a',
+  primaryPale: '#dbeafe',
+  success: '#059669',
+  danger: '#dc2626',
+  warning: '#f59e0b',
+  border: '#cbd5e1',
+  text: '#1e293b',
+  muted: '#64748b',
+  surface: '#fff',
+};
+
 const S = {
-  wrap: { maxWidth: 480, margin: '0 auto', fontFamily: "'Noto Sans JP', sans-serif", fontSize: 13, background: C.surface, minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  header: { background: C.primary, color: '#fff', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 },
+  wrap: {
+    maxWidth: 480,
+    margin: '0 auto',
+    fontFamily: "'Noto Sans JP', sans-serif",
+    fontSize: 13,
+    background: C.surface,
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  header: {
+    background: C.primary,
+    color: '#fff',
+    padding: '14px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
   headerTitle: { fontSize: 16, fontWeight: 700, flex: 1 },
   body: { flex: 1, padding: '16px' },
-  formInput: { width: '100%', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '8px 10px', fontFamily: 'inherit', fontSize: 13, color: C.text, background: '#f8fafc', boxSizing: 'border-box', marginBottom: 12 },
+  formInput: {
+    width: '100%',
+    border: `1.5px solid ${C.border}`,
+    borderRadius: 4,
+    padding: '8px 10px',
+    fontFamily: 'inherit',
+    fontSize: 13,
+    color: C.text,
+    background: '#f8fafc',
+    boxSizing: 'border-box',
+    marginBottom: 12,
+  },
   label: { display: 'block', fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 },
   btn: (v) => {
-    const variants = { primary: { background: C.primary, color: '#fff' }, success: { background: C.success, color: '#fff' }, gray: { background: '#e2e8f0', color: C.text }, line: { background: '#06C755', color: '#fff' } };
-    return { width: '100%', padding: '12px', border: 'none', borderRadius: 8, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10, ...(variants[v] || variants.primary) };
+    const variants = {
+      primary: { background: C.primary, color: '#fff' },
+      success: { background: C.success, color: '#fff' },
+      gray: { background: '#e2e8f0', color: C.text },
+      line: { background: '#06C755', color: '#fff' },
+    };
+    return {
+      width: '100%',
+      padding: '12px',
+      border: 'none',
+      borderRadius: 8,
+      fontFamily: 'inherit',
+      fontSize: 14,
+      fontWeight: 700,
+      cursor: 'pointer',
+      marginBottom: 10,
+      ...(variants[v] || variants.primary),
+    };
   },
-  card: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 16px', marginBottom: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)' },
-  note: { background: '#eff6ff', borderLeft: `4px solid ${C.primary}`, padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginBottom: 12, color: C.primary },
+  card: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: '14px 16px',
+    marginBottom: 12,
+    boxShadow: '0 2px 8px rgba(0,0,0,.08)',
+  },
+  note: {
+    background: '#eff6ff',
+    borderLeft: `4px solid ${C.primary}`,
+    padding: '8px 12px',
+    borderRadius: '0 4px 4px 0',
+    fontSize: 11.5,
+    marginBottom: 12,
+    color: C.primary,
+  },
   required: { color: C.danger, fontSize: 11, marginLeft: 4 },
-  autoFill: { color: C.muted, fontSize: 11.5, fontStyle: 'italic', marginBottom: 4 },
-  step: (active) => ({ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: active ? C.primaryPale : '#f8fafc', border: `1.5px solid ${active ? C.primary : C.border}`, marginBottom: 8, cursor: 'pointer' }),
-  stepNum: (active) => ({ width: 24, height: 24, borderRadius: '50%', background: active ? C.primary : C.border, color: active ? '#fff' : C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }),
+  step: (active) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 14px',
+    borderRadius: 8,
+    background: active ? C.primaryPale : '#f8fafc',
+    border: `1.5px solid ${active ? C.primary : C.border}`,
+    marginBottom: 8,
+    cursor: 'pointer',
+  }),
+  stepNum: (active) => ({
+    width: 24,
+    height: 24,
+    borderRadius: '50%',
+    background: active ? C.primary : C.border,
+    color: active ? '#fff' : C.muted,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 700,
+    flexShrink: 0,
+  }),
 };
 
 // ============================================================
@@ -54,21 +144,256 @@ const STEPS = [
 ];
 
 // ============================================================
+// 空き状況を○△×に変換するヘルパー
+// ============================================================
+/**
+ * その日の空きスロット数から○△×を判定する
+ * @param {number} slotCount - 空きスロット数
+ * @param {number} threshold - △になる閾値（デフォルト2）
+ * @returns {{ mark: string, color: string, label: string }}
+ */
+function getAvailMark(slotCount, threshold = 2) {
+  if (slotCount === 0) return { mark: '×', color: C.danger,  label: '満席' };
+  if (slotCount <= threshold) return { mark: '△', color: C.warning, label: '残りわずか' };
+  return { mark: '○', color: C.success, label: '空きあり' };
+}
+
+// ============================================================
+// 月カレンダーコンポーネント
+// ============================================================
+function BookingCalendar({ availability, selectedStaffId, onSelectDate, selectedDate, calDate, onChangeMonth }) {
+  const DAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+  const year  = calDate.getFullYear();
+  const month = calDate.getMonth();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const pad = n => String(n).padStart(2, '0');
+
+  // 月の週配列を生成
+  const firstDay    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weeks = [];
+  let day = 1 - firstDay;
+  while (day <= daysInMonth) {
+    const week = [];
+    for (let i = 0; i < 7; i++, day++) {
+      week.push(day > 0 && day <= daysInMonth ? day : null);
+    }
+    weeks.push(week);
+  }
+
+  // 指定日の空きスロット数を計算
+  const countSlots = (dateStr) => {
+    const dayData = availability[dateStr];
+    if (!dayData) return 0;
+    if (selectedStaffId && selectedStaffId !== 'any') {
+      return (dayData[selectedStaffId] || []).length;
+    }
+    // 指名なしの場合は全施術者の空きをユニークで合算
+    const allSlots = Object.values(dayData).flat();
+    return [...new Set(allSlots)].length;
+  };
+
+  return (
+    <div>
+      {/* 月ナビゲーション */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <button
+          onClick={() => onChangeMonth(-1)}
+          style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '4px 12px', fontSize: 16, cursor: 'pointer' }}>
+          ‹
+        </button>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>
+          {year}年{month + 1}月
+        </span>
+        <button
+          onClick={() => onChangeMonth(1)}
+          style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '4px 12px', fontSize: 16, cursor: 'pointer' }}>
+          ›
+        </button>
+      </div>
+
+      {/* 凡例 */}
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 10 }}>
+        {[
+          { mark: '○', color: C.success,  label: '空きあり' },
+          { mark: '△', color: C.warning,  label: '残りわずか' },
+          { mark: '×', color: C.danger,   label: '満席・休診' },
+        ].map(item => (
+          <div key={item.mark} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+            <span style={{ color: item.color, fontWeight: 700, fontSize: 13 }}>{item.mark}</span>
+            <span style={{ color: C.muted }}>{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* カレンダー本体 */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <thead>
+          <tr>
+            {DAY_LABELS.map((d, i) => (
+              <th key={d} style={{
+                padding: '6px 0',
+                textAlign: 'center',
+                fontSize: 12,
+                fontWeight: 600,
+                color: i === 0 ? '#b91c1c' : i === 6 ? '#1d4ed8' : C.muted,
+              }}>
+                {d}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((week, wi) => (
+            <tr key={wi}>
+              {week.map((d, di) => {
+                if (!d) return <td key={di} />;
+
+                const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+                const dateObj = new Date(year, month, d);
+                const isPast     = dateObj < today;
+                const isSelected = selectedDate === dateStr;
+                const slotCount  = isPast ? 0 : countSlots(dateStr);
+                const avail      = isPast ? { mark: '—', color: C.border, label: '過去' } : getAvailMark(slotCount);
+                const isDisabled = isPast || slotCount === 0;
+                const isToday    = dateObj.getTime() === today.getTime();
+
+                return (
+                  <td key={di} style={{ padding: 3 }}>
+                    <div
+                      onClick={() => !isDisabled && onSelectDate(dateStr)}
+                      style={{
+                        textAlign: 'center',
+                        borderRadius: 8,
+                        padding: '6px 2px',
+                        cursor: isDisabled ? 'default' : 'pointer',
+                        background: isSelected
+                          ? C.primary
+                          : isToday
+                            ? C.primaryPale
+                            : '#fff',
+                        border: isSelected
+                          ? `2px solid ${C.primary}`
+                          : isToday
+                            ? `2px solid ${C.primary}`
+                            : `1px solid ${C.border}`,
+                        opacity: isPast ? 0.35 : 1,
+                        transition: 'background 0.15s',
+                      }}>
+                      {/* 日付数字 */}
+                      <div style={{
+                        fontSize: 13,
+                        fontWeight: isToday || isSelected ? 700 : 400,
+                        color: isSelected
+                          ? '#fff'
+                          : di === 0 ? '#b91c1c'
+                          : di === 6 ? '#1d4ed8'
+                          : C.text,
+                        lineHeight: 1.2,
+                      }}>
+                        {d}
+                        {isToday && !isSelected && (
+                          <span style={{ display: 'block', fontSize: 8, color: C.primary, fontWeight: 700, lineHeight: 1 }}>今日</span>
+                        )}
+                      </div>
+                      {/* 空き状況マーク */}
+                      <div style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: isSelected ? '#fff' : avail.color,
+                        lineHeight: 1.2,
+                        marginTop: 1,
+                      }}>
+                        {isPast ? '' : avail.mark}
+                      </div>
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// 時間スロット選択コンポーネント
+// ============================================================
+function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot, onSelectSlot }) {
+  if (!selectedDate) return null;
+
+  const dayData = availability[selectedDate] || {};
+  // 指定施術者または全員の空きスロットを収集
+  let slots = [];
+  if (selectedStaffId && selectedStaffId !== 'any') {
+    slots = dayData[selectedStaffId] || [];
+  } else {
+    const all = Object.values(dayData).flat();
+    slots = [...new Set(all)].sort();
+  }
+
+  if (slots.length === 0) {
+    return <div style={{ ...S.note, marginTop: 12 }}>この日は空き枠がありません</div>;
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.primary, marginBottom: 8 }}>
+        {selectedDate} の時間を選んでください
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {slots.map(slot => {
+          const isActive = slot === selectedSlot;
+          return (
+            <button
+              key={slot}
+              onClick={() => onSelectSlot(slot)}
+              style={{
+                padding: '8px 18px',
+                border: `1.5px solid ${isActive ? C.primary : C.border}`,
+                borderRadius: 20,
+                background: isActive ? C.primary : '#fff',
+                color: isActive ? '#fff' : C.text,
+                fontSize: 13,
+                fontWeight: isActive ? 700 : 400,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'all 0.15s',
+              }}>
+              {slot}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // メインコンポーネント
 // ============================================================
 export default function LineLiffBooking() {
-  const [liffReady, setLiffReady] = useState(false);
-  const [lineProfile, setLineProfile] = useState(null);
+  const [liffReady, setLiffReady]           = useState(false);
+  const [lineProfile, setLineProfile]       = useState(null);
   const [registeredUser, setRegisteredUser] = useState(null);
-  const [step, setStep] = useState(1);
-  const [menuList, setMenuList] = useState([]);
-  const [staffList, setStaffList] = useState([]);
-  const [availability, setAvail] = useState({});
-  const [selection, setSelection] = useState({ menuId: '', staffId: '', date: '', slot: '' });
-  const [form, setForm] = useState({ name: '', phone: '', email: '' });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [completed, setCompleted] = useState(null);
+  const [step, setStep]                     = useState(1);
+  const [menuList, setMenuList]             = useState([]);
+  const [staffList, setStaffList]           = useState([]);
+  // 月ごとの空き状況キャッシュ { 'YYYY-MM': { 'YYYY-MM-DD': { staffId: [slots] } } }
+  const [availCache, setAvailCache]         = useState({});
+  const [selection, setSelection]           = useState({ menuId: '', staffId: '', date: '', slot: '' });
+  const [form, setForm]                     = useState({ name: '', phone: '', email: '' });
+  const [error, setError]                   = useState('');
+  const [loading, setLoading]               = useState(false);
+  const [completed, setCompleted]           = useState(null);
+  // カレンダーの表示月
+  const [calDate, setCalDate]               = useState(new Date());
+  // 空き状況の読み込み中フラグ
+  const [availLoading, setAvailLoading]     = useState(false);
 
   // LIFF初期化
   useEffect(() => {
@@ -99,15 +424,43 @@ export default function LineLiffBooking() {
     ]);
   }, []);
 
-  // 月の空き状況取得
+  // 表示月が変わったら空き状況を取得（キャッシュ優先）
   useEffect(() => {
-    const today = new Date();
-    apiGet({ action: 'getAvailability', year: today.getFullYear(), month: today.getMonth() + 1 })
-      .then(r => r.success && setAvail(r.data.availability));
-  }, []);
+    const year  = calDate.getFullYear();
+    const month = calDate.getMonth() + 1;
+    const key   = `${year}-${String(month).padStart(2, '0')}`;
+    if (availCache[key]) return; // キャッシュがあればスキップ
 
-  const set = (key, val) => setSelection(prev => ({ ...prev, [key]: val }));
+    setAvailLoading(true);
+    apiGet({ action: 'getAvailability', year, month })
+      .then(r => {
+        if (r.success) {
+          setAvailCache(prev => ({ ...prev, [key]: r.data.availability }));
+        }
+      })
+      .finally(() => setAvailLoading(false));
+  }, [calDate]);
+
+  // 現在表示月のキャッシュキー
+  const currentCacheKey = `${calDate.getFullYear()}-${String(calDate.getMonth() + 1).padStart(2, '0')}`;
+  const availability    = availCache[currentCacheKey] || {};
+
+  const set  = (key, val) => setSelection(prev => ({ ...prev, [key]: val }));
   const setF = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+
+  // 月を移動（-1: 前月 / +1: 翌月）。過去月には戻らない
+  const handleChangeMonth = (diff) => {
+    setCalDate(prev => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() + diff, 1);
+      const today = new Date();
+      const minDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      if (next < minDate) return prev;
+      return next;
+    });
+    // 月が変わったら日付・スロットをリセット
+    set('date', '');
+    set('slot', '');
+  };
 
   // 予約送信
   const handleSubmit = async () => {
@@ -116,7 +469,7 @@ export default function LineLiffBooking() {
     const res = await apiPost({
       action: 'createBooking',
       datetime: `${selection.date} ${selection.slot}`,
-      staffId: selection.staffId,
+      staffId: selection.staffId === 'any' ? '' : selection.staffId,
       menuId: selection.menuId,
       userName: form.name,
       userPhone: form.phone,
@@ -127,7 +480,12 @@ export default function LineLiffBooking() {
       setCompleted(res.data.bookingId);
       // LINEに完了メッセージを送信（LIFF経由）
       if (liff.isLoggedIn() && liff.getOS() !== 'web') {
-        try { await liff.sendMessages([{ type: 'text', text: `予約が完了しました！\n予約ID：${res.data.bookingId}\n日時：${selection.date} ${selection.slot}` }]); } catch (_) {}
+        try {
+          await liff.sendMessages([{
+            type: 'text',
+            text: `予約が完了しました！\n予約ID：${res.data.bookingId}\n日時：${selection.date} ${selection.slot}`,
+          }]);
+        } catch (_) {}
       }
     } else {
       setError(res.error?.message || '予約に失敗しました');
@@ -138,17 +496,6 @@ export default function LineLiffBooking() {
   // 選択済み情報の表示名
   const selectedMenu  = menuList.find(m => m.menuId === selection.menuId);
   const selectedStaff = staffList.find(s => s.staffId === selection.staffId);
-
-  // 日付候補を生成（今日から30日分）
-  const dateOptions = [];
-  for (let i = 0; i < 30; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const pad = n => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const dayData = availability[dateStr];
-    if (dayData !== null) dateOptions.push({ dateStr, d });
-  }
 
   // 完了画面
   if (completed) {
@@ -162,7 +509,12 @@ export default function LineLiffBooking() {
             予約ID: {completed}
           </div>
           <div style={S.note}>LINEにも確認メッセージをお送りしました。</div>
-          <button style={S.btn('primary')} onClick={() => { setCompleted(null); setStep(1); setSelection({ menuId: '', staffId: '', date: '', slot: '' }); }}>
+          <button style={S.btn('primary')} onClick={() => {
+            setCompleted(null);
+            setStep(1);
+            setSelection({ menuId: '', staffId: '', date: '', slot: '' });
+            setCalDate(new Date());
+          }}>
             最初に戻る
           </button>
         </div>
@@ -181,16 +533,23 @@ export default function LineLiffBooking() {
         {/* ステップインジケーター */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center' }}>
           {STEPS.map(s => (
-            <div key={s.num} style={{ width: 28, height: 5, borderRadius: 3, background: s.num <= step ? C.primary : C.border, transition: 'background .3s' }} />
+            <div key={s.num} style={{
+              width: 28,
+              height: 5,
+              borderRadius: 3,
+              background: s.num <= step ? C.primary : C.border,
+              transition: 'background .3s',
+            }} />
           ))}
         </div>
 
-        {/* Step 1: コース選択 */}
+        {/* ─── Step 1: コース選択 ─── */}
         {step === 1 && (
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>① コースを選んでください</h3>
             {menuList.map(m => (
-              <div key={m.menuId} style={{ ...S.step(selection.menuId === m.menuId) }} onClick={() => { set('menuId', m.menuId); setStep(2); }}>
+              <div key={m.menuId} style={S.step(selection.menuId === m.menuId)}
+                onClick={() => { set('menuId', m.menuId); setStep(2); }}>
                 <span style={S.stepNum(selection.menuId === m.menuId)}>●</span>
                 <div>
                   <div style={{ fontWeight: 600 }}>{m.name}</div>
@@ -201,13 +560,16 @@ export default function LineLiffBooking() {
           </div>
         )}
 
-        {/* Step 2: 担当者選択 */}
+        {/* ─── Step 2: 担当者選択 ─── */}
         {step === 2 && (
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>② 担当者を選んでください</h3>
-            {/* 選択したコースに対応する施術者のみ表示 */}
-            {[{ staffId: 'any', name: '指名なし（空き優先）' }, ...staffList.filter(s => !selection.menuId || (s.menus || '').includes(selection.menuId))].map(s => (
-              <div key={s.staffId} style={{ ...S.step(selection.staffId === s.staffId) }} onClick={() => { set('staffId', s.staffId); setStep(3); }}>
+            {[
+              { staffId: 'any', name: '指名なし（空き優先）' },
+              ...staffList.filter(s => !selection.menuId || (s.menus || '').includes(selection.menuId)),
+            ].map(s => (
+              <div key={s.staffId} style={S.step(selection.staffId === s.staffId)}
+                onClick={() => { set('staffId', s.staffId); setStep(3); }}>
                 <span style={S.stepNum(selection.staffId === s.staffId)}>●</span>
                 <div>
                   <div style={{ fontWeight: 600 }}>{s.name}</div>
@@ -219,72 +581,103 @@ export default function LineLiffBooking() {
           </div>
         )}
 
-        {/* Step 3: 日時選択 */}
+        {/* ─── Step 3: 日時選択（月カレンダー） ─── */}
         {step === 3 && (
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>③ 日時を選んでください</h3>
-            {dateOptions.length === 0 ? (
-              <div style={S.note}>空き日程がありません</div>
-            ) : dateOptions.slice(0, 14).map(({ dateStr, d }) => {
-              const DAY = ['日', '月', '火', '水', '木', '金', '土'];
-              const dayData = availability[dateStr];
-              const staffKey = selection.staffId === 'any' ? Object.keys(dayData || {}) : [selection.staffId];
-              const slots = staffKey.flatMap(sid => (dayData || {})[sid] || []);
-              const uniqueSlots = [...new Set(slots)].sort();
-              if (uniqueSlots.length === 0) return null;
-              return (
-                <div key={dateStr} style={{ marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                    {d.getMonth() + 1}月{d.getDate()}日（{DAY[d.getDay()]}）
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {uniqueSlots.map(slot => (
-                      <button key={slot} style={{ padding: '6px 14px', border: `1.5px solid ${selection.date === dateStr && selection.slot === slot ? C.primary : C.border}`, borderRadius: 20, background: selection.date === dateStr && selection.slot === slot ? C.primary : '#fff', color: selection.date === dateStr && selection.slot === slot ? '#fff' : C.text, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
-                        onClick={() => { set('date', dateStr); set('slot', slot); setStep(4); }}>
-                        {slot}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+
+            {/* 月カレンダー */}
+            {availLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 13 }}>
+                📅 空き状況を読み込み中...
+              </div>
+            ) : (
+              <BookingCalendar
+                availability={availability}
+                selectedStaffId={selection.staffId}
+                selectedDate={selection.date}
+                calDate={calDate}
+                onChangeMonth={handleChangeMonth}
+                onSelectDate={(dateStr) => {
+                  set('date', dateStr);
+                  set('slot', ''); // 日付変更時はスロットをリセット
+                }}
+              />
+            )}
+
+            {/* 時間スロット選択 */}
+            <SlotPicker
+              availability={availability}
+              selectedDate={selection.date}
+              selectedStaffId={selection.staffId}
+              selectedSlot={selection.slot}
+              onSelectSlot={(slot) => {
+                set('slot', slot);
+                // スロット選択後に自動で次のステップへ
+                setTimeout(() => setStep(4), 300);
+              }}
+            />
+
+            {/* 次へボタン（日付とスロットが選択済みの場合のみ有効） */}
+            {selection.date && selection.slot && (
+              <button style={{ ...S.btn('primary'), marginTop: 16 }} onClick={() => setStep(4)}>
+                次へ →
+              </button>
+            )}
             <button style={S.btn('gray')} onClick={() => setStep(2)}>← 戻る</button>
           </div>
         )}
 
-        {/* Step 4: 情報入力 */}
+        {/* ─── Step 4: 情報入力 ─── */}
         {step === 4 && (
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>④ ご情報を入力してください</h3>
             {registeredUser && <div style={S.note}>✅ 登録済み情報から自動入力しました</div>}
             <label style={S.label}>お名前<span style={S.required}>*</span></label>
-            <input style={S.formInput} type="text" placeholder="山田太郎" value={form.name} onChange={e => setF('name', e.target.value)} />
+            <input style={S.formInput} type="text" placeholder="山田太郎"
+              value={form.name} onChange={e => setF('name', e.target.value)} />
             <label style={S.label}>電話番号</label>
-            <input style={S.formInput} type="tel" placeholder="09012345678" value={form.phone} onChange={e => setF('phone', e.target.value)} />
+            <input style={S.formInput} type="tel" placeholder="09012345678"
+              value={form.phone} onChange={e => setF('phone', e.target.value)} />
             <label style={S.label}>E-Mail</label>
-            <input style={S.formInput} type="email" placeholder="yamada@example.com" value={form.email} onChange={e => setF('email', e.target.value)} />
+            <input style={S.formInput} type="email" placeholder="yamada@example.com"
+              value={form.email} onChange={e => setF('email', e.target.value)} />
             {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-            <button style={S.btn('primary')} onClick={() => { if (!form.name) { setError('お名前は必須です'); return; } setError(''); setStep(5); }}>次へ →</button>
+            <button style={S.btn('primary')} onClick={() => {
+              if (!form.name) { setError('お名前は必須です'); return; }
+              setError('');
+              setStep(5);
+            }}>次へ →</button>
             <button style={S.btn('gray')} onClick={() => setStep(3)}>← 戻る</button>
           </div>
         )}
 
-        {/* Step 5: 確認・送信 */}
+        {/* ─── Step 5: 確認・送信 ─── */}
         {step === 5 && (
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>⑤ 予約内容を確認してください</h3>
             <div style={S.card}>
               <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '8px 0', fontSize: 13 }}>
-                <span style={{ color: C.muted }}>コース</span><span style={{ fontWeight: 600 }}>{selectedMenu?.name}</span>
-                <span style={{ color: C.muted }}>担当者</span><span style={{ fontWeight: 600 }}>{selection.staffId === 'any' ? '指名なし' : selectedStaff?.name}</span>
-                <span style={{ color: C.muted }}>日時</span><span style={{ fontWeight: 600 }}>{selection.date} {selection.slot}</span>
-                <span style={{ color: C.muted }}>お名前</span><span style={{ fontWeight: 600 }}>{form.name}</span>
-                <span style={{ color: C.muted }}>電話番号</span><span>{form.phone || '—'}</span>
-                <span style={{ color: C.muted }}>E-Mail</span><span>{form.email || '—'}</span>
+                <span style={{ color: C.muted }}>コース</span>
+                <span style={{ fontWeight: 600 }}>{selectedMenu?.name}</span>
+                <span style={{ color: C.muted }}>担当者</span>
+                <span style={{ fontWeight: 600 }}>
+                  {selection.staffId === 'any' ? '指名なし' : selectedStaff?.name}
+                </span>
+                <span style={{ color: C.muted }}>日時</span>
+                <span style={{ fontWeight: 600 }}>{selection.date} {selection.slot}</span>
+                <span style={{ color: C.muted }}>お名前</span>
+                <span style={{ fontWeight: 600 }}>{form.name}</span>
+                <span style={{ color: C.muted }}>電話番号</span>
+                <span>{form.phone || '—'}</span>
+                <span style={{ color: C.muted }}>E-Mail</span>
+                <span>{form.email || '—'}</span>
               </div>
             </div>
             {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-            <button style={S.btn('success')} onClick={handleSubmit}>{loading ? '送信中...' : '✅ 予約を確定する'}</button>
+            <button style={S.btn('success')} onClick={handleSubmit}>
+              {loading ? '送信中...' : '✅ 予約を確定する'}
+            </button>
             <button style={S.btn('gray')} onClick={() => setStep(4)}>← 戻る</button>
           </div>
         )}
