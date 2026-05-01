@@ -1576,6 +1576,8 @@ export default function LineLiffBooking() {
             phone: data.phone || prev.phone,
             email: data.email || prev.email,
           }));
+          // registeredUserも更新して「登録済み」状態にする
+          setRegisteredUser({ name: data.name, phone: data.phone, email: data.email });
           setScreen('booking');
         }}
       />
