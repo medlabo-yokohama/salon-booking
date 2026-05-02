@@ -1560,6 +1560,7 @@ export default function LineLiffBooking() {
   const [screen, setScreen]                 = useState('booking');
   // ブラウザ検索で見つかった予約
   const [searchedBookings, setSearchedBookings] = useState([]);
+  const [storePhone, setStorePhone] = useState('');
 
   const isNoStaff = !selection.staffId || selection.staffId === 'any';
 
@@ -1591,6 +1592,7 @@ export default function LineLiffBooking() {
     Promise.all([
       apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
       apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
+      apiGet({ action: 'getSettings' }).then(r => r.success && setStorePhone(r.data?.settings?.['店舗電話番号'] || '')),
     ]);
   }, []);
 
@@ -1746,9 +1748,9 @@ export default function LineLiffBooking() {
           <div style={{ background: C.primaryPale, color: C.primary, borderRadius: 8, padding: '12px 20px', fontWeight: 700, fontSize: 14, marginBottom: 16 }}>
             予約ID: {completed}
           </div>
-          <div style={S.note}>
-            {isLineEnv ? 'LINEにも確認メッセージをお送りしました。' : '予約IDはキャンセル時に必要です。お控えください。'}
-          </div>
+          {storePhone && (
+            <div style={S.note}>ご不明な点はお気軽にお問い合わせください。TEL: {storePhone}</div>
+          )}
           <button style={S.btn('primary')} onClick={() => {
             setCompleted(null);
             setStep(1);
@@ -1775,6 +1777,7 @@ export default function LineLiffBooking() {
       <div style={S.header}>
         <h3 style={S.headerTitle}>🏥 ご予約</h3>
         {lineProfile && <span style={{ fontSize: 11, opacity: 0.8 }}>{lineProfile.displayName} 様</span>}
+        {storePhone && <span style={{ fontSize: 10, opacity: 0.8 }}>TEL: {storePhone}</span>}
         {/* 予約確認ボタン：LINE/ブラウザで遷移先が変わる */}
         <button
           onClick={() => setScreen(lineProfile ? 'mypage' : 'search')}
