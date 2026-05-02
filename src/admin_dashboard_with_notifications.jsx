@@ -158,11 +158,15 @@ function Btn({ v = 'primary', onClick, children, style }) {
   return <button style={{ ...S.btn(v), ...style }} onClick={onClick}>{children}</button>;
 }
 
-function SideNav({ current, onChange, onLogout, adminInfo }) {
+function SideNav({ current, onChange, onLogout, adminInfo, settings }) {
   return (
     <nav style={S.sidenav}>
       {/* ログイン中の管理者情報 */}
-      <div style={{ padding: '8px 14px 12px', borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
+        <div style={{ padding: '8px 14px 12px', borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 4 }}>{settings?.['店舗名'] || ''}</div>
+        {settings?.['店舗電話番号'] && (
+          <div style={{ fontSize: 10.5, color: C.muted, marginBottom: 6 }}>📞 {settings['店舗電話番号']}</div>
+        )}
         <div style={{ fontSize: 10, color: C.muted }}>ログイン中</div>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: C.primary, wordBreak: 'break-all' }}>{adminInfo?.email}</div>
         <div style={{ marginTop: 3 }}>
@@ -2770,7 +2774,7 @@ export default function AdminDashboard() {
   return (
     <div style={S.app}>
       <div style={S.layout}>
-        <SideNav current={currentPage} onChange={setCurrentPage} onLogout={() => setAdminInfo(null)} adminInfo={adminInfo} />
+        <SideNav current={currentPage} onChange={setCurrentPage} onLogout={() => setAdminInfo(null)} adminInfo={adminInfo} settings={settings} />
         <main style={S.main}>{renderContent()}</main>
       </div>
 
