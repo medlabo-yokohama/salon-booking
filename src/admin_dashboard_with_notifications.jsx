@@ -206,7 +206,7 @@ function LoginScreen({ onLogin }) {
       const res = await apiPost({ action: 'adminLogin', email, password });
       console.log('レスポンス:', res);
       if (res.success) {
-        onLogin({ adminId: res.data.adminId, email: res.data.email, level: res.data.level });
+      onLogin({ adminId: res.data.adminId, email: res.data.email, level: res.data.level || res.data.role });
       } else {
         setError(res.error?.message || 'ログインに失敗しました');
       }
