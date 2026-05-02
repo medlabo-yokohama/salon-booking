@@ -749,7 +749,10 @@ export default function BookingCalendar() {
             currentDate={currentDate}
             staffList={staffList}
             onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
-            onSelectDay={(d, staffId) => { setSelectedDate(d); setSelectedStaffId(staffId === 'all' ? null : staffId); setPage('calDay'); }}
+            onClick={() => {
+  console.log('selectedStaffId:', selectedStaffId);
+  onSelectDay(new Date(year, month, d), selectedStaffId);
+}}>○</span>
           />
         )}
         {page === 'calDay' && selectedDate && (
