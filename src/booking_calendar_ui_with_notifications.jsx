@@ -257,13 +257,23 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
 
   // 全施術者の空き時間を集約する
   const allSlots = {};
-  const filteredStaff = preSelectedStaffId ? staffList.filter(s => s.staffId === preSelectedStaffId) : staffList;
-  filteredStaff.forEach(s => {
-    (dayData[s.staffId] || []).forEach(slot => {
-      if (!allSlots[slot]) allSlots[slot] = [];
-      allSlots[slot].push(s);
-    });
+const filteredStaff = preSelectedStaffId ? staffList.filter(s => s.staffId === preSelectedStaffId) : staffList;
+
+// 指名なし枠を追加
+if (!preSelectedStaffId) {
+  (dayData['any'] || []).forEach(slot => {
+    if (!allSlots[slot]) allSlots[slot] = [];
+    allSlots[slot].push({ staffId: '', name: '指名なし' });
   });
+}
+
+filteredStaff.forEach(s => {
+  (dayData[s.staffId] || []).forEach(slot => {
+    if (!allSlots[slot]) allSlots[slot] = [];
+    allSlots[slot].push(s);
+  });
+});
+
   const sortedSlots = Object.keys(allSlots).sort();
 
   return (
