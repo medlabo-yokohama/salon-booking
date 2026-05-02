@@ -249,6 +249,7 @@ function CalMonth({ bookings, menuList, currentDate, onChangeDate, onSelectDay }
 
   const bookingMap = {};
   bookings.forEach(b => {
+    if (b.status === 'キャンセル') return;
     const d = b.datetime?.split(' ')[0];
     if (!bookingMap[d]) bookingMap[d] = [];
     bookingMap[d].push(b);
