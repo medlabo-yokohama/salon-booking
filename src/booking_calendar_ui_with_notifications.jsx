@@ -321,7 +321,6 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
   const handleSubmit = async () => {
@@ -330,7 +329,7 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
     const res = await apiPost({
       action: 'createBooking',
       datetime: `${date} ${slot}`,
-      staffId,
+      staffId: staffId || '',
       menuId: form.menuId,
       userName: form.userName,
       userPhone: form.userPhone,
@@ -346,8 +345,13 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
     setLoading(false);
   };
 
-  const staffMenuIds = (staff?.menus || '').split(',').map(m => m.trim());
-  const availMenus = menuList.filter(m => staffMenuIds.includes(m.menuId));
+  // 指名なしの場合は全メニュー、施術者指定の場合は担当メニューのみ
+  const staffMenuIds = (staff?.menus || '').split(',').map(m => m.trim()).filter(Boolean);
+  const availMenus = (!staffId || staffId === 'any' || staffMenuIds.length === 0)
+    ? menuList
+    : menuList.filter(m => staffMenuIds.includes(m.menuId));
+
+  const staffLabel = (!staffId || staffId === 'any') ? '指名なし' : (staff?.name || '—');
 
   return (
     <div>
@@ -355,20 +359,17 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
         <button style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }} onClick={onBack}>≪ 戻る</button>
         <span style={{ fontWeight: 700 }}>予約内容の入力</span>
       </div>
-
       <div style={{ ...S.noteInfo, marginBottom: 12 }}>
-        📅 {date} {slot} ／ 担当：{staff?.name || staffId}
+        📅 {date} {slot} ／ 担当：{staffLabel}
       </div>
-
       {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-
       <table style={S.formTbl}>
         <tbody>
           <tr>
             <th style={S.formTh}>コース<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
             <td style={S.formTd}>
               <select style={S.formInput} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
-                {(availMenus.length > 0 ? availMenus : menuList).map(m => (
+                {availMenus.map(m => (
                   <option key={m.menuId} value={m.menuId}>{m.name}（{m.durationMin}分）</option>
                 ))}
               </select>
@@ -395,7 +396,6 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
           </tr>
         </tbody>
       </table>
-
       <div style={S.btnRow}>
         <button style={S.btn('gray')} onClick={onBack}>キャンセル</button>
         <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={handleSubmit}>
@@ -447,27 +447,56 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [cancelLoading, setCancelLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchBookings = async () => {
-      if (!user?.userId) { setLoading(false); return; }
-      const res = await apiGet({ action: 'getUserBookings', userId: user.userId });
-      if (res.success) setBookings(res.data.bookings);
-      setLoading(false);
-    };
-    fetchBookings();
-  }, [user]);
-
-  // staffIdから表示名を取得する
-  const getStaffName = (staffId) => {
-    const s = (staffList || []).find(s => s.staffId === staffId);
-    return s ? s.name : staffId;
+  const fetchBookings = async () => {
+    if (!user?.userId) { setLoading(false); return; }
+    const res = await apiGet({ action: 'getUserBookings', userId: user.userId });
+    if (res.success) setBookings(res.data.bookings || []);
+    setLoading(false);
   };
 
-  // menuIdからメニュー名を取得する
+  useEffect(() => { fetchBookings(); }, [user]);
+
+  const getStaffName = (staffId) => {
+    if (!staffId || staffId === 'any') return '指名なし';
+    const s = (staffList || []).find(s => s.staffId === staffId);
+    return s ? s.name : '指名なし';
+  };
+
   const getMenuName = (menuId) => {
     const m = (menuList || []).find(m => m.menuId === menuId);
     return m ? m.name : menuId;
+  };
+
+  const toggleSelect = (bookingId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(bookingId) ? next.delete(bookingId) : next.add(bookingId);
+      return next;
+    });
+  };
+
+  const cancelableBookings = bookings.filter(b =>
+    b.status !== 'キャンセル' && b.status !== '完了' &&
+    new Date((b.datetime || '').replace(' ', 'T')) >= new Date()
+  );
+
+  const handleBulkCancel = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`${selectedIds.size}件の予約をキャンセルしますか？`)) return;
+    setCancelLoading(true);
+    for (const bookingId of selectedIds) {
+      await apiPost({ action: 'cancelBooking', bookingId, lineUserId: user?.lineUserId || '' });
+    }
+    setBookings(prev => prev.map(b =>
+      selectedIds.has(b.bookingId) ? { ...b, status: 'キャンセル' } : b
+    ));
+    setSelectedIds(new Set());
+    setBulkMode(false);
+    setCancelLoading(false);
   };
 
   if (loading) return <p>読み込み中...</p>;
@@ -475,20 +504,69 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
 
   return (
     <div>
-      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>📋 ご予約一覧</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 style={{ fontWeight: 700, color: C.primary }}>📋 ご予約一覧</h3>
+        {cancelableBookings.length > 0 && (
+          <button
+            onClick={() => { setBulkMode(p => !p); setSelectedIds(new Set()); }}
+            style={{ ...S.btn(bulkMode ? 'gray' : 'danger'), fontSize: 11, padding: '4px 10px' }}>
+            {bulkMode ? '選択解除' : '☑ 一括キャンセル'}
+          </button>
+        )}
+      </div>
+
+      {bulkMode && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, border: `1px solid ${C.danger}` }}>
+          <span style={{ fontSize: 12, flex: 1, color: C.danger }}>
+            {selectedIds.size > 0 ? `${selectedIds.size}件選択中` : 'キャンセルする予約を選択してください'}
+          </span>
+          <button
+            onClick={handleBulkCancel}
+            disabled={selectedIds.size === 0 || cancelLoading}
+            style={{ ...S.btn('danger'), fontSize: 11, padding: '4px 12px', opacity: selectedIds.size === 0 ? 0.5 : 1 }}>
+            {cancelLoading ? 'キャンセル中...' : 'キャンセル実行'}
+          </button>
+        </div>
+      )}
+
       {bookings.length === 0 ? (
         <div style={S.noteInfo}>現在ご予約はありません</div>
-      ) : bookings.map(b => (
-        <div key={b.bookingId} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setSelectedBooking(b)}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{formatDatetime(b.datetime)}</div>
-          <div style={{ color: C.muted, fontSize: 12 }}>{getMenuName(b.menuId)} ／ {getStaffName(b.staffId)}</div>
-          <div style={{ marginTop: 4 }}>
-            <span style={{ ...S.badge.green, display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...S.badge.green }}>{b.status}</span>
+      ) : bookings.map(b => {
+        const isPast = new Date((b.datetime || '').replace(' ', 'T')) < new Date();
+        const canCancel = b.status !== 'キャンセル' && b.status !== '完了' && !isPast;
+        return (
+          <div key={b.bookingId}
+            style={{ ...S.card, cursor: 'pointer', opacity: b.status === 'キャンセル' ? 0.6 : 1,
+              borderLeft: b.status === 'キャンセル' ? `4px solid ${C.danger}` : `4px solid ${C.primary}`,
+              background: selectedIds.has(b.bookingId) ? '#fef2f2' : C.surface }}
+            onClick={() => bulkMode && canCancel ? toggleSelect(b.bookingId) : setSelectedBooking(b)}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              {bulkMode && canCancel && (
+                <div style={{
+                  width: 20, height: 20, borderRadius: 4, flexShrink: 0, marginTop: 2,
+                  border: `2px solid ${selectedIds.has(b.bookingId) ? C.danger : C.border}`,
+                  background: selectedIds.has(b.bookingId) ? C.danger : '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {selectedIds.has(b.bookingId) && <span style={{ color: '#fff', fontSize: 12 }}>✓</span>}
+                </div>
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{formatDatetime(b.datetime)}</div>
+                <div style={{ color: C.muted, fontSize: 12 }}>{getMenuName(b.menuId)} ／ {getStaffName(b.staffId)}</div>
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700,
+                    background: b.status === 'キャンセル' ? '#fee2e2' : '#d1fae5',
+                    color: b.status === 'キャンセル' ? C.danger : '#065f46' }}>
+                    {b.status}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
-      {/* 予約詳細モーダル */}
       {selectedBooking && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'flex-end', zIndex: 1000 }}>
           <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px', width: '100%', maxWidth: 480, margin: '0 auto' }}>
@@ -502,14 +580,15 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
               </tbody>
             </table>
             <div style={S.btnRow}>
-              <button style={S.btn('danger')} onClick={async () => {
-                if (!window.confirm('この予約をキャンセルしますか？')) return;
-                await onCancel(selectedBooking.bookingId);
-                setSelectedBooking(null);
-                setBookings(prev => prev.filter(b => b.bookingId !== selectedBooking.bookingId));
-              }}>予約取り消し</button>
-              <button style={S.btn('gray')} onClick={() => setSelectedBooking(null)}>キャンセル</button>
-              <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={() => setSelectedBooking(null)}>OK</button>
+              {selectedBooking.status !== 'キャンセル' && new Date((selectedBooking.datetime || '').replace(' ', 'T')) >= new Date() && (
+                <button style={S.btn('danger')} onClick={async () => {
+                  if (!window.confirm('この予約をキャンセルしますか？')) return;
+                  await onCancel(selectedBooking.bookingId);
+                  setSelectedBooking(null);
+                  setBookings(prev => prev.map(b => b.bookingId === selectedBooking.bookingId ? { ...b, status: 'キャンセル' } : b));
+                }}>予約取り消し</button>
+              )}
+              <button style={{ ...S.btn('gray'), marginLeft: 'auto' }} onClick={() => setSelectedBooking(null)}>閉じる</button>
             </div>
           </div>
         </div>
