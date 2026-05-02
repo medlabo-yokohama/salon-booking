@@ -924,10 +924,7 @@ export default function BookingCalendar() {
 
         {/* 予約完了 */}
         {page === 'complete' && (
-          <BookingCompleteScreen bookingId={completedBookingId} onBack={() => { setPage('course'); }} storePhone={storePhone} />
-            bookingId={completedBookingId}
-            onBack={() => { setPage('course'); setNavPage('cal'); }}
-          />
+          <BookingCompleteScreen bookingId={completedBookingId} onBack={() => { setPage('course'); setNavPage('cal'); }} storePhone={storePhone} />
         )}
 
         {/* 予約確認 */}
