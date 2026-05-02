@@ -1,6 +1,6 @@
 // ============================================================
 // booking_calendar_ui_with_notifications.jsx
-// 顧客向け予約フォーム（月カレンダー・日ビュー・予約確認）
+// 顧客向け予約フォーム（コース選択→月カレンダー→日ビュー→予約確認）
 // ============================================================
 import React, { useState, useEffect, useCallback } from 'react';
 
@@ -12,12 +12,12 @@ const GAS_URL = import.meta.env.VITE_GAS_URL || '';
 async function apiGet(params) {
   const url = new URL(GAS_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { redirect: 'follow' });
   return res.json();
 }
 
 async function apiPost(body) {
-  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) });
+  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' });
   return res.json();
 }
 
@@ -40,13 +40,11 @@ const S = {
   nav: { display: 'flex', background: C.surface, borderTop: `1px solid ${C.border}`, position: 'sticky', bottom: 0, zIndex: 10 },
   navLink: (active) => ({ flex: 1, textAlign: 'center', padding: '8px 4px', fontSize: 10, color: active ? C.primary : C.muted, textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', fontWeight: active ? 700 : 400 }),
   navIcon: { fontSize: 18 },
-  // ログイン画面
   loginWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '32px 16px', background: 'linear-gradient(160deg, #1a4f8a 0%, #0ea5e9 100%)' },
   loginCard: { background: '#fff', borderRadius: 16, padding: '28px 24px', width: '100%', maxWidth: 360, boxShadow: '0 20px 60px rgba(0,0,0,.2)' },
   lineBtn: { width: '100%', background: '#06C755', color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   emailBtn: { width: '100%', background: C.primary, color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 },
   textBtn: { width: '100%', background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 8, padding: 11, fontFamily: 'inherit', fontSize: 13, color: C.muted, cursor: 'pointer' },
-  // フォーム
   formTbl: { width: '100%', borderCollapse: 'collapse', background: C.surface, borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.10)' },
   formTh: { background: '#f1f5f9', fontWeight: 600, width: 120, color: C.text, border: `1px solid ${C.border}`, padding: '9px 12px', fontSize: 12.5, textAlign: 'left' },
   formTd: { color: C.muted, border: `1px solid ${C.border}`, padding: '9px 12px', fontSize: 12.5 },
@@ -57,10 +55,7 @@ const S = {
   },
   btnRow: { display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' },
   card: { background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '14px 16px', marginBottom: 12 },
-  badge: { green: { background: '#d1fae5', color: '#065f46' }, orange: { background: '#fef3c7', color: '#92400e' }, gray: { background: '#e2e8f0', color: '#475569' } },
-  // カレンダー
   calTable: { width: '100%', borderCollapse: 'collapse' },
-  // 空き状況アイコン
   availCircle: (type) => {
     const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', fontSize: 13, fontWeight: 700, cursor: 'pointer' };
     const t = { o: { background: '#d1fae5', color: '#065f46', border: '1.5px solid #059669' }, x: { background: '#fee2e2', color: '#991b1b', border: '1.5px solid #dc2626' }, dash: { background: '#f1f5f9', color: '#94a3b8', border: '1.5px solid #cbd5e1' } };
@@ -83,7 +78,7 @@ const NAV = [
 ];
 
 // ============================================================
-// ログイン画面（新規登録リンク付き）
+// ログイン画面
 // ============================================================
 function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook, onGoRegister }) {
   const [email, setEmail] = useState('');
@@ -110,43 +105,65 @@ function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook, onGoRegister }) {
           <h2 style={{ fontSize: 18, color: C.primary, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>
             🏥 ご予約
           </h2>
-
-          {/* LINEログインボタン */}
           <button style={S.lineBtn} onClick={onLineLogin}>
             <span style={{ fontSize: 20 }}>💬</span> LINEでログイン
           </button>
-
           <div style={{ textAlign: 'center', color: C.muted, fontSize: 12, margin: '10px 0', position: 'relative' }}>
             <span style={{ background: '#fff', padding: '0 8px', position: 'relative', zIndex: 1 }}>または</span>
             <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: C.border }} />
           </div>
-
-          {/* メールアドレスログイン */}
           <input style={{ ...S.formInput, marginBottom: 8 }} type="email" placeholder="メールアドレス"
             value={email} onChange={e => setEmail(e.target.value)} />
           <input style={{ ...S.formInput, marginBottom: 8 }} type="password" placeholder="パスワード"
             value={password} onChange={e => setPassword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleEmailLogin()} />
-
           {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-
           <button style={S.emailBtn} onClick={handleEmailLogin}>
             {loading ? 'ログイン中...' : 'メールアドレスでログイン'}
           </button>
-
-          {/* 新規登録リンク */}
           <div style={{ textAlign: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: C.muted }}>アカウントをお持ちでない方は </span>
             <button style={{ background: 'none', border: 'none', color: C.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
-              onClick={onGoRegister}>
-              新規登録
-            </button>
+              onClick={onGoRegister}>新規登録</button>
           </div>
-
-          {/* ゲスト予約（ログインなし） */}
           <button style={S.textBtn} onClick={onGuestBook}>ログインせずに予約する</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// コース選択画面
+// ============================================================
+function CourseSelectScreen({ menuList, selectedMenuId, onSelectMenu }) {
+  return (
+    <div>
+      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 4 }}>① コースを選んでください</h3>
+      <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>ご希望のコースをタップしてください</p>
+      {menuList.length === 0 && (
+        <div style={S.noteInfo}>コースを読み込み中...</div>
+      )}
+      {menuList.map(m => (
+        <div key={m.menuId}
+          onClick={() => onSelectMenu(m.menuId)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '14px 16px', borderRadius: 10, marginBottom: 10, cursor: 'pointer',
+            background: selectedMenuId === m.menuId ? C.primaryPale : '#f8fafc',
+            border: `2px solid ${selectedMenuId === m.menuId ? C.primary : C.border}`,
+            transition: 'all 0.15s',
+          }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: selectedMenuId === m.menuId ? C.primary : C.text }}>{m.name}</div>
+            <div style={{ fontSize: 12, color: C.muted }}>⏱ {m.durationMin}分</div>
+          </div>
+          {selectedMenuId === m.menuId
+            ? <div style={{ color: C.primary, fontSize: 18, fontWeight: 700 }}>✓</div>
+            : <div style={{ color: C.muted, fontSize: 18 }}>›</div>
+          }
+        </div>
+      ))}
     </div>
   );
 }
@@ -168,9 +185,11 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
     if (!d) return null;
     const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
     const dayData = availability[dateStr];
-    if (dayData === null) return 'closed';    // 定休日
+    if (dayData === null) return 'closed';
     if (!dayData) return 'unknown';
-    const staffKeys = selectedStaffId === 'all' ? Object.keys(dayData) : [selectedStaffId];
+    const staffKeys = selectedStaffId === 'all'
+      ? Object.keys(dayData).filter(k => k !== 'any')
+      : [selectedStaffId];
     const totalSlots = staffKeys.reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
     return totalSlots > 0 ? 'available' : 'full';
   };
@@ -255,24 +274,27 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
   const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const dayData = availability[dateStr] || {};
 
-  // 全施術者の空き時間を集約する
+  // 施術者フィルタ適用（指名なし含む）
   const allSlots = {};
-const filteredStaff = preSelectedStaffId ? staffList.filter(s => s.staffId === preSelectedStaffId) : staffList;
 
-// 指名なし枠を追加
-if (!preSelectedStaffId) {
-  (dayData['any'] || []).forEach(slot => {
-    if (!allSlots[slot]) allSlots[slot] = [];
-    allSlots[slot].push({ staffId: '', name: '指名なし' });
-  });
-}
+  // 指名なし枠
+  if (!preSelectedStaffId || preSelectedStaffId === 'all') {
+    (dayData['any'] || []).forEach(slot => {
+      if (!allSlots[slot]) allSlots[slot] = [];
+      allSlots[slot].push({ staffId: '', name: '指名なし' });
+    });
+  }
 
-filteredStaff.forEach(s => {
-  (dayData[s.staffId] || []).forEach(slot => {
-    if (!allSlots[slot]) allSlots[slot] = [];
-    allSlots[slot].push(s);
+  const filteredStaff = (preSelectedStaffId && preSelectedStaffId !== 'all')
+    ? staffList.filter(s => s.staffId === preSelectedStaffId)
+    : staffList;
+
+  filteredStaff.forEach(s => {
+    (dayData[s.staffId] || []).forEach(slot => {
+      if (!allSlots[slot]) allSlots[slot] = [];
+      allSlots[slot].push(s);
+    });
   });
-});
 
   const sortedSlots = Object.keys(allSlots).sort();
 
@@ -293,8 +315,9 @@ filteredStaff.forEach(s => {
             <div key={slot} style={S.card}>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{slot}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {allSlots[slot].map(s => (
-                  <button key={s.staffId} style={{ ...S.btn('primary'), gap: 6 }} onClick={() => onSelectSlot(dateStr, slot, s.staffId)}>
+                {allSlots[slot].map((s, idx) => (
+                  <button key={s.staffId || idx} style={{ ...S.btn('primary'), gap: 6 }}
+                    onClick={() => onSelectSlot(dateStr, slot, s.staffId)}>
                     {s.name}
                   </button>
                 ))}
@@ -310,10 +333,10 @@ filteredStaff.forEach(s => {
 // ============================================================
 // 予約入力フォーム
 // ============================================================
-function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onBack, onComplete }) {
+function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onBack, onComplete, defaultMenuId }) {
   const staff = staffList.find(s => s.staffId === staffId);
   const [form, setForm] = useState({
-    menuId: menuList[0]?.menuId || '',
+    menuId: defaultMenuId || menuList[0]?.menuId || '',
     userName: user?.name || '',
     userPhone: user?.phone || '',
     userEmail: user?.email || '',
@@ -347,11 +370,11 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
 
   // 指名なしの場合は全メニュー、施術者指定の場合は担当メニューのみ
   const staffMenuIds = (staff?.menus || '').split(',').map(m => m.trim()).filter(Boolean);
-  const availMenus = (!staffId || staffId === 'any' || staffMenuIds.length === 0)
+  const availMenus = (!staffId || staffId === 'any' || staffId === '' || staffMenuIds.length === 0)
     ? menuList
     : menuList.filter(m => staffMenuIds.includes(m.menuId));
 
-  const staffLabel = (!staffId || staffId === 'any') ? '指名なし' : (staff?.name || '—');
+  const staffLabel = (!staffId || staffId === 'any' || staffId === '') ? '指名なし' : (staff?.name || '—');
 
   return (
     <div>
@@ -369,7 +392,7 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
             <th style={S.formTh}>コース<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
             <td style={S.formTd}>
               <select style={S.formInput} value={form.menuId} onChange={e => set('menuId', e.target.value)}>
-                {availMenus.map(m => (
+                {(availMenus.length > 0 ? availMenus : menuList).map(m => (
                   <option key={m.menuId} value={m.menuId}>{m.name}（{m.durationMin}分）</option>
                 ))}
               </select>
@@ -420,20 +443,18 @@ function BookingCompleteScreen({ bookingId, onBack }) {
       </div>
       <div style={S.noteInfo}>確認メール・LINE通知をお送りしました。</div>
       <div style={S.btnRow}>
-        <button style={{ ...S.btn('outline'), margin: '12px auto 0' }} onClick={onBack}>予約カレンダーに戻る</button>
+        <button style={{ ...S.btn('primary'), margin: '12px auto 0' }} onClick={onBack}>予約カレンダーに戻る</button>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// 日時を「YYYY-MM-DD HH:mm」形式に変換するヘルパー
+// 日時フォーマットヘルパー
 // ============================================================
 function formatDatetime(raw) {
   if (!raw) return '—';
-  // すでに「2026-03-09 09:30」形式ならそのまま返す
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(raw))) return String(raw).substring(0, 16);
-  // Date型や英語形式の文字列を変換する
   const d = new Date(raw);
   if (isNaN(d.getTime())) return String(raw);
   const pad = n => String(n).padStart(2, '0');
@@ -441,7 +462,7 @@ function formatDatetime(raw) {
 }
 
 // ============================================================
-// 予約確認画面（マイページ）
+// 予約確認画面（一括キャンセル対応）
 // ============================================================
 function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
   const [bookings, setBookings] = useState([]);
@@ -461,7 +482,7 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
   useEffect(() => { fetchBookings(); }, [user]);
 
   const getStaffName = (staffId) => {
-    if (!staffId || staffId === 'any') return '指名なし';
+    if (!staffId || staffId === 'any' || staffId === '') return '指名なし';
     const s = (staffList || []).find(s => s.staffId === staffId);
     return s ? s.name : '指名なし';
   };
@@ -536,9 +557,12 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
         const canCancel = b.status !== 'キャンセル' && b.status !== '完了' && !isPast;
         return (
           <div key={b.bookingId}
-            style={{ ...S.card, cursor: 'pointer', opacity: b.status === 'キャンセル' ? 0.6 : 1,
+            style={{
+              ...S.card, cursor: 'pointer',
+              opacity: b.status === 'キャンセル' ? 0.6 : 1,
               borderLeft: b.status === 'キャンセル' ? `4px solid ${C.danger}` : `4px solid ${C.primary}`,
-              background: selectedIds.has(b.bookingId) ? '#fef2f2' : C.surface }}
+              background: selectedIds.has(b.bookingId) ? '#fef2f2' : C.surface,
+            }}
             onClick={() => bulkMode && canCancel ? toggleSelect(b.bookingId) : setSelectedBooking(b)}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               {bulkMode && canCancel && (
@@ -555,9 +579,11 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{formatDatetime(b.datetime)}</div>
                 <div style={{ color: C.muted, fontSize: 12 }}>{getMenuName(b.menuId)} ／ {getStaffName(b.staffId)}</div>
                 <div style={{ marginTop: 4 }}>
-                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700,
+                  <span style={{
+                    display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700,
                     background: b.status === 'キャンセル' ? '#fee2e2' : '#d1fae5',
-                    color: b.status === 'キャンセル' ? C.danger : '#065f46' }}>
+                    color: b.status === 'キャンセル' ? C.danger : '#065f46',
+                  }}>
                     {b.status}
                   </span>
                 </div>
@@ -567,6 +593,7 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
         );
       })}
 
+      {/* 予約詳細モーダル */}
       {selectedBooking && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'flex-end', zIndex: 1000 }}>
           <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px', width: '100%', maxWidth: 480, margin: '0 auto' }}>
@@ -585,7 +612,9 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
                   if (!window.confirm('この予約をキャンセルしますか？')) return;
                   await onCancel(selectedBooking.bookingId);
                   setSelectedBooking(null);
-                  setBookings(prev => prev.map(b => b.bookingId === selectedBooking.bookingId ? { ...b, status: 'キャンセル' } : b));
+                  setBookings(prev => prev.map(b =>
+                    b.bookingId === selectedBooking.bookingId ? { ...b, status: 'キャンセル' } : b
+                  ));
                 }}>予約取り消し</button>
               )}
               <button style={{ ...S.btn('gray'), marginLeft: 'auto' }} onClick={() => setSelectedBooking(null)}>閉じる</button>
@@ -598,18 +627,16 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
 }
 
 // ============================================================
-// 利用者登録画面（登録後に自動ログイン対応）
+// 利用者登録画面
 // ============================================================
 function RegisterScreen({ onRegister, onBackToLogin }) {
   const [form, setForm] = useState({ name: '', nameKana: '', birthdate: '', phone: '', email: '', password: '', passwordConfirm: '', lineUserId: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
-
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
   const handleRegister = async () => {
-    // バリデーション
     if (!form.name || !form.nameKana || !form.email || !form.password) {
       setError('必須項目（氏名・ふりがな・メール・パスワード）を入力してください');
       return;
@@ -631,7 +658,6 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
     const res = await apiPost({ action: 'registerUser', ...form });
     if (res.success) {
       setDone(true);
-      // 登録完了後2秒待って自動ログイン
       setTimeout(() => onRegister(res.data), 1500);
     } else {
       setError(res.error?.message || '登録に失敗しました');
@@ -641,7 +667,6 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
 
   const R = <span style={{ color: C.danger, fontSize: 11 }}>*</span>;
 
-  // 登録完了メッセージ
   if (done) {
     return (
       <div style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -654,25 +679,19 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
 
   return (
     <div>
-      {/* ログインに戻るリンク */}
       {onBackToLogin && (
         <div style={{ marginBottom: 12 }}>
           <button style={{ background: 'none', border: 'none', color: C.primary, fontSize: 12, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-            onClick={onBackToLogin}>
-            ← ログイン画面に戻る
-          </button>
+            onClick={onBackToLogin}>← ログイン画面に戻る</button>
         </div>
       )}
-
       <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 4 }}>利用者登録</h3>
       <p style={{ fontSize: 11.5, color: C.muted, marginBottom: 12 }}>登録後はメールアドレスとパスワードでログインできます</p>
-
       {error && (
         <div style={{ background: '#fef2f2', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.danger, marginBottom: 12 }}>
           {error}
         </div>
       )}
-
       <table style={S.formTbl}>
         <tbody>
           <tr><th style={S.formTh}>氏名{R}</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="山田太郎" value={form.name} onChange={e => set('name', e.target.value)} /></td></tr>
@@ -706,11 +725,6 @@ function InquiryScreen() {
   const [body, setBody] = useState('');
   const [sent, setSent] = useState(false);
 
-  const handleSend = () => {
-    // 問い合わせ送信処理（実際はGAS経由でメール送信）
-    setSent(true);
-  };
-
   if (sent) {
     return (
       <div style={{ textAlign: 'center', padding: '32px 0' }}>
@@ -737,7 +751,7 @@ function InquiryScreen() {
       <div style={S.note}>送信先：店舗アカウントのE-Mailへ送信されます</div>
       <div style={S.btnRow}>
         <button style={S.btn('gray')}>キャンセル</button>
-        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={handleSend}>送信</button>
+        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={() => setSent(true)}>送信</button>
       </div>
     </div>
   );
@@ -747,7 +761,7 @@ function InquiryScreen() {
 // メインコンポーネント
 // ============================================================
 export default function BookingCalendar() {
-  const [page, setPage]           = useState('login');  // login | cal | calDay | form | complete | confirm | register | inquiry
+  const [page, setPage]           = useState('login');
   const [user, setUser]           = useState(null);
   const [availability, setAvail]  = useState({});
   const [staffList, setStaffList] = useState([]);
@@ -756,6 +770,7 @@ export default function BookingCalendar() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedStaffId, setSelectedStaffId] = useState(null);
+  const [selectedMenuId, setSelectedMenuId] = useState('');
   const [completedBookingId, setCompletedBookingId] = useState(null);
   const [navPage, setNavPage] = useState('cal');
 
@@ -777,16 +792,16 @@ export default function BookingCalendar() {
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
 
   // ログイン・登録処理
-  const handleLogin     = (userData) => { setUser(userData); setPage('cal'); setNavPage('cal'); };
-  const handleGuestBook = () => { setPage('cal'); setNavPage('cal'); };
-  const handleLogout    = () => { setUser(null); setPage('login'); };
+  const handleLogin      = (userData) => { setUser(userData); setPage('course'); setNavPage('cal'); };
+  const handleGuestBook  = () => { setPage('course'); setNavPage('cal'); };
+  const handleLogout     = () => { setUser(null); setPage('login'); };
   const handleGoRegister = () => { setPage('register-pre'); };
 
   // ナビゲーション
   const handleNav = (key) => {
     if (key === 'logout') { handleLogout(); return; }
     setNavPage(key);
-    if (key === 'cal')           setPage('cal');
+    if (key === 'cal')           setPage('course');
     else if (key === 'confirm')  setPage('confirm');
     else if (key === 'register') setPage('register');
     else if (key === 'inquiry')  setPage('inquiry');
@@ -794,7 +809,12 @@ export default function BookingCalendar() {
 
   // ページタイトル取得
   const getTitle = () => {
-    const titles = { cal: '予約', calDay: '日程選択', form: '予約入力', complete: '予約完了', confirm: '予約確認', register: '利用者登録', 'register-pre': '新規登録', inquiry: '問い合わせ' };
+    const titles = {
+      course: 'コース選択', cal: '予約', calDay: '日程選択',
+      form: '予約入力', complete: '予約完了',
+      confirm: '予約確認', register: '利用者登録',
+      'register-pre': '新規登録', inquiry: '問い合わせ',
+    };
     return titles[page] || '予約システム';
   };
 
@@ -813,7 +833,7 @@ export default function BookingCalendar() {
         </div>
         <div style={S.body}>
           <RegisterScreen
-            onRegister={userData => { setUser(userData); setPage('cal'); setNavPage('cal'); }}
+            onRegister={userData => { setUser(userData); setPage('course'); setNavPage('cal'); }}
             onBackToLogin={() => setPage('login')}
           />
         </div>
@@ -825,29 +845,51 @@ export default function BookingCalendar() {
     <div style={S.wrap}>
       {/* ヘッダー */}
       <div style={S.header}>
-        {page !== 'cal' && <button style={S.backBtn} onClick={() => setPage('cal')}>‹</button>}
+        {(page === 'cal' || page === 'calDay' || page === 'form') && (
+          <button style={S.backBtn} onClick={() => {
+            if (page === 'form') setPage('calDay');
+            else if (page === 'calDay') setPage('cal');
+            else if (page === 'cal') setPage('course');
+          }}>‹</button>
+        )}
         <h3 style={S.headerTitle}>{getTitle()}</h3>
         {user && <span style={{ fontSize: 11, opacity: 0.8 }}>{user.name} 様</span>}
       </div>
 
       {/* コンテンツ */}
       <div style={S.body}>
-        {page === 'cal' && (
-<CalMonthScreen
-  availability={availability}
-  currentDate={currentDate}
-  staffList={staffList}
-  onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
-  onSelectDay={(d, staffId) => { setSelectedDate(d); setSelectedStaffId(staffId === 'all' ? null : staffId); setPage('calDay'); }}
-/>
+        {/* コース選択 */}
+        {page === 'course' && (
+          <CourseSelectScreen
+            menuList={menuList}
+            selectedMenuId={selectedMenuId}
+            onSelectMenu={(menuId) => { setSelectedMenuId(menuId); setPage('cal'); }}
+          />
         )}
+
+        {/* 月カレンダー */}
+        {page === 'cal' && (
+          <CalMonthScreen
+            availability={availability}
+            currentDate={currentDate}
+            staffList={staffList}
+            onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
+            onSelectDay={(d, staffId) => {
+              setSelectedDate(d);
+              setSelectedStaffId(staffId === 'all' ? null : staffId);
+              setPage('calDay');
+            }}
+          />
+        )}
+
+        {/* 日ビュー */}
         {page === 'calDay' && selectedDate && (
-      <CalDayScreen
-        availability={availability}
-        currentDate={selectedDate}
-        staffList={staffList}
-        menuList={menuList}
-        selectedStaffId={selectedStaffId}
+          <CalDayScreen
+            availability={availability}
+            currentDate={selectedDate}
+            staffList={staffList}
+            menuList={menuList}
+            selectedStaffId={selectedStaffId}
             onSelectSlot={(date, slot, staffId) => {
               setSelectedSlot(slot);
               setSelectedStaffId(staffId);
@@ -856,6 +898,8 @@ export default function BookingCalendar() {
             onBack={() => setPage('cal')}
           />
         )}
+
+        {/* 予約入力フォーム */}
         {page === 'form' && (
           <BookingFormScreen
             date={selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}` : ''}
@@ -863,14 +907,22 @@ export default function BookingCalendar() {
             staffId={selectedStaffId}
             staffList={staffList}
             menuList={menuList}
+            defaultMenuId={selectedMenuId}
             user={user}
             onBack={() => setPage('calDay')}
             onComplete={id => { setCompletedBookingId(id); setPage('complete'); }}
           />
         )}
+
+        {/* 予約完了 */}
         {page === 'complete' && (
-          <BookingCompleteScreen bookingId={completedBookingId} onBack={() => { setPage('cal'); setNavPage('cal'); }} />
+          <BookingCompleteScreen
+            bookingId={completedBookingId}
+            onBack={() => { setPage('course'); setNavPage('cal'); }}
+          />
         )}
+
+        {/* 予約確認 */}
         {page === 'confirm' && (
           <BookingConfirmScreen
             user={user}
@@ -881,12 +933,16 @@ export default function BookingCalendar() {
             }}
           />
         )}
+
+        {/* 利用者登録 */}
         {page === 'register' && (
           <RegisterScreen
-            onRegister={userData => { setUser(userData); setPage('cal'); setNavPage('cal'); }}
+            onRegister={userData => { setUser(userData); setPage('course'); setNavPage('cal'); }}
             onBackToLogin={null}
           />
         )}
+
+        {/* 問い合わせ */}
         {page === 'inquiry' && <InquiryScreen />}
       </div>
 
