@@ -1910,8 +1910,6 @@ export default function LineLiffBooking() {
 
         {/* ─── Step 3: 日時選択 ─── */}
         {step === 3 && (
-            <div>
-            <div style={{fontSize:10,color:'red'}}>DEBUG: staffId={selection.staffId}</div>
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>③ 日時を選んでください</h3>
             {availLoading ? (
