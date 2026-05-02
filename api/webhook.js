@@ -3,54 +3,29 @@
 // LINE Webhook中継エンドポイント（Vercel Serverless Function）
 // ============================================================
 
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwj9Q0wnJ05Tlf4V9gG20qhRMf1YSEmmzFXFC_osPSDFuSckGjIp3k8qiRF29JOHlnn-A/exec';
+
 export default async function handler(req, res) {
-  // GETリクエスト（Verify）に即座に200を返す
-  if (req.method === 'GET') {
-    return res.status(200).json({ status: 'ok' });
-  }
-
-  // POST以外は拒否する
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const body = req.body;
-
-  // LINEに即座に200を返す（5秒タイムアウト防止）
+  // LINEに即座に200を返す
   res.status(200).json({ status: 'ok' });
 
-  // Apps ScriptのURLを環境変数から取得する
-  const GAS_URL = process.env.VITE_GAS_URL || '';
-  if (!GAS_URL) {
-    console.error('VITE_GAS_URL が設定されていません');
-    return;
-  }
-
-  // Apps Scriptは302リダイレクトを返すため
-  // manualでリダイレクトを受け取り、LocationヘッダーのURLに再リクエストする
+  // GASに転送（リダイレクト追従）
   try {
-    const firstRes = await fetch(GAS_URL, {
+    const response = await fetch(GAS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      redirect: 'manual',
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: JSON.stringify(req.body),
+      redirect: 'follow',
     });
-
-    // 302リダイレクトの場合はLocationヘッダーのURLに再リクエストする
-    if (firstRes.status === 302 || firstRes.status === 301) {
-      const redirectUrl = firstRes.headers.get('location');
-      if (redirectUrl) {
-        await fetch(redirectUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        console.log('リダイレクト先に転送完了:', redirectUrl);
-      }
-    } else {
-      console.log('Apps Script転送完了 ステータス:', firstRes.status);
-    }
+    console.log('GAS応答ステータス:', response.status);
   } catch (err) {
-    console.error('Apps Script転送エラー:', err.message);
+    console.error('Apps Script転送エラー:', err.message, err.cause);
   }
 }
