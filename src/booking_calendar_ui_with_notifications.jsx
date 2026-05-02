@@ -432,7 +432,7 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
 // ============================================================
 // 予約完了画面
 // ============================================================
-function BookingCompleteScreen({ bookingId, onBack }) {
+function BookingCompleteScreen({ bookingId, onBack, storePhone }) {
   return (
     <div style={{ textAlign: 'center', padding: '32px 16px' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
@@ -441,7 +441,7 @@ function BookingCompleteScreen({ bookingId, onBack }) {
       <div style={{ background: C.primaryPale, color: C.primary, borderRadius: 8, padding: '12px 20px', fontWeight: 700, fontSize: 14, marginBottom: 20 }}>
         {bookingId}
       </div>
-      <div style={S.noteInfo}>確認メール・LINE通知をお送りしました。</div>
+      {storePhone && <div style={S.noteInfo}>📞 ご不明な点は {storePhone} までお問い合わせください。</div>}
       <div style={S.btnRow}>
         <button style={{ ...S.btn('primary'), margin: '12px auto 0' }} onClick={onBack}>予約カレンダーに戻る</button>
       </div>
@@ -720,7 +720,7 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
 // ============================================================
 // 問い合わせ画面
 // ============================================================
-function InquiryScreen() {
+function InquiryScreen({ storePhone }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sent, setSent] = useState(false);
@@ -740,7 +740,7 @@ function InquiryScreen() {
       <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>問い合わせ</h3>
       <div style={S.card}>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.primary, marginBottom: 6 }}>📞 お電話</div>
-        <p style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>〇〇〇-〇〇〇-〇〇〇〇</p>
+        <p style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>{storePhone || '—'}</p>
       </div>
       <table style={S.formTbl}>
         <tbody>
@@ -773,6 +773,13 @@ export default function BookingCalendar() {
   const [selectedMenuId, setSelectedMenuId] = useState('');
   const [completedBookingId, setCompletedBookingId] = useState(null);
   const [navPage, setNavPage] = useState('cal');
+  const [storePhone, setStorePhone] = useState('');
+
+  useEffect(() => {
+    apiGet({ action: 'getSettings' }).then(res => {
+      if (res.success) setStorePhone(res.data?.settings?.['店舗電話番号'] || '');
+    });
+  }, []);
 
   // 初期データ取得
   useEffect(() => {
@@ -854,6 +861,7 @@ export default function BookingCalendar() {
         )}
         <h3 style={S.headerTitle}>{getTitle()}</h3>
         {user && <span style={{ fontSize: 11, opacity: 0.8 }}>{user.name} 様</span>}
+        {storePhone && <span style={{ fontSize: 10, opacity: 0.8 }}>📞 {storePhone}</span>}
       </div>
 
       {/* コンテンツ */}
@@ -916,7 +924,7 @@ export default function BookingCalendar() {
 
         {/* 予約完了 */}
         {page === 'complete' && (
-          <BookingCompleteScreen
+          <BookingCompleteScreen bookingId={completedBookingId} onBack={() => { setPage('course'); }} storePhone={storePhone} />
             bookingId={completedBookingId}
             onBack={() => { setPage('course'); setNavPage('cal'); }}
           />
@@ -943,7 +951,7 @@ export default function BookingCalendar() {
         )}
 
         {/* 問い合わせ */}
-        {page === 'inquiry' && <InquiryScreen />}
+        {page === 'inquiry' && <InquiryScreen storePhone={storePhone} />}
       </div>
 
       {/* ボトムナビ */}
