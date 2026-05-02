@@ -1257,6 +1257,7 @@ function StoreScreen({ settings, onSave }) {
   const buildForm = (s) => ({
     storeName:      s['店舗名'] || '',
     storeEmail:     s['店舗メール'] || '',
+    storePhone:     s['店舗電話番号'] || '',
     closedDays:     (s['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
     closedDatesSet: parseClosedDates(s['定休日（任意）'] || ''),
     // 午前・午後の営業時間
@@ -1306,6 +1307,7 @@ function StoreScreen({ settings, onSave }) {
     await onSave({
       '店舗名':           form.storeName,
       '店舗メール':       form.storeEmail,
+      '店舗電話番号':     form.storePhone,
       '定休曜日':         form.closedDays.join(','),
       '定休日（任意）':   [...form.closedDatesSet].sort().join(','),
       '午前営業':         String(form.amEnabled),
@@ -1337,6 +1339,9 @@ function StoreScreen({ settings, onSave }) {
           </FormRow>
           <FormRow label="E-Mail">
             <input style={S.input} type="email" value={form.storeEmail} onChange={e => setForm(p=>({...p,storeEmail:e.target.value}))} />
+          </FormRow>
+          <FormRow label="電話番号">
+            <input style={S.input} type="tel" value={form.storePhone} onChange={e => setForm(p=>({...p,storePhone:e.target.value}))} />
           </FormRow>
 
           {/* 定休日（曜日） */}
