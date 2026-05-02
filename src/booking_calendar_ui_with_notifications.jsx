@@ -744,16 +744,13 @@ export default function BookingCalendar() {
       {/* コンテンツ */}
       <div style={S.body}>
         {page === 'cal' && (
-          <CalMonthScreen
-            availability={availability}
-            currentDate={currentDate}
-            staffList={staffList}
-            onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
-            onClick={() => {
-  console.log('selectedStaffId:', selectedStaffId);
-  onSelectDay(new Date(year, month, d), selectedStaffId);
-}}>○</span>
-          />
+<CalMonthScreen
+  availability={availability}
+  currentDate={currentDate}
+  staffList={staffList}
+  onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
+  onSelectDay={(d, staffId) => { setSelectedDate(d); setSelectedStaffId(staffId === 'all' ? null : staffId); setPage('calDay'); }}
+/>
         )}
         {page === 'calDay' && selectedDate && (
       <CalDayScreen
