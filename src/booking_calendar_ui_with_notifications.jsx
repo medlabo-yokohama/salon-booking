@@ -227,7 +227,7 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                         <span style={{ fontSize: 11, color: isHoliday ? '#b91c1c' : di === 6 ? '#1d4ed8' : C.muted, fontWeight: 700 }}>{d}</span>
                         {status === 'available' && (
-                          <span style={S.availCircle('o')} onClick={() => onSelectDay(new Date(year, month, d))}>○</span>
+                          <span style={S.availCircle('o')} onClick={() => onSelectDay(new Date(year, month, d), selectedStaffId)}>○</span>
                         )}
                         {status === 'full' && <span style={S.availCircle('x')}>×</span>}
                         {status === 'closed' && <span style={S.availCircle('dash')}>—</span>}
@@ -249,7 +249,7 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
 // ============================================================
 // 日ビュー画面（時間帯選択）
 // ============================================================
-function CalDayScreen({ availability, currentDate, staffList, menuList, onSelectSlot, onBack }) {
+function CalDayScreen({ availability, currentDate, staffList, menuList, onSelectSlot, onBack, selectedStaffId: preSelectedStaffId }) {
   const pad = n => String(n).padStart(2, '0');
   const dateStr = `${currentDate.getFullYear()}-${pad(currentDate.getMonth() + 1)}-${pad(currentDate.getDate())}`;
   const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
@@ -257,7 +257,8 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
 
   // 全施術者の空き時間を集約する
   const allSlots = {};
-  staffList.forEach(s => {
+  const filteredStaff = preSelectedStaffId ? staffList.filter(s => s.staffId === preSelectedStaffId) : staffList;
+  filteredStaff.forEach(s => {
     (dayData[s.staffId] || []).forEach(slot => {
       if (!allSlots[slot]) allSlots[slot] = [];
       allSlots[slot].push(s);
@@ -748,15 +749,16 @@ export default function BookingCalendar() {
             currentDate={currentDate}
             staffList={staffList}
             onChangeDate={d => { setCurrentDate(d); fetchAvailability(d); }}
-            onSelectDay={d => { setSelectedDate(d); setPage('calDay'); }}
+            onSelectDay={(d, staffId) => { setSelectedDate(d); setSelectedStaffId(staffId === 'all' ? null : staffId); setPage('calDay'); }}
           />
         )}
         {page === 'calDay' && selectedDate && (
-          <CalDayScreen
-            availability={availability}
-            currentDate={selectedDate}
-            staffList={staffList}
-            menuList={menuList}
+      <CalDayScreen
+        availability={availability}
+        currentDate={selectedDate}
+        staffList={staffList}
+        menuList={menuList}
+        selectedStaffId={selectedStaffId}
             onSelectSlot={(date, slot, staffId) => {
               setSelectedSlot(slot);
               setSelectedStaffId(staffId);
