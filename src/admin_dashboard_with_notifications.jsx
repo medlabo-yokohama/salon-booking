@@ -2200,6 +2200,106 @@ function MessageScreen({ userList }) {
 }
 
 // ============================================================
+// 問い合わせ画面（管理者 → システム作成者）
+// ============================================================
+function InquiryScreen({ adminInfo }) {
+  const [subject,  setSubject]  = useState('');
+  const [category, setCategory] = useState('system');
+  const [body,     setBody]     = useState('');
+  const [sending,  setSending]  = useState(false);
+  const [result,   setResult]   = useState(null);
+
+  const CATEGORIES = [
+    { value: 'system',  label: 'システムに関する問い合わせ' },
+    { value: 'bug',     label: '不具合・エラー報告' },
+    { value: 'feature', label: '機能追加・改善要望' },
+    { value: 'other',   label: 'その他' },
+  ];
+
+  const handleSend = async () => {
+    if (!subject.trim()) { alert('件名を入力してください'); return; }
+    if (!body.trim())    { alert('お問い合わせ内容を入力してください'); return; }
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await apiPost({
+        action:      'sendInquiry',
+        senderEmail: adminInfo?.email || '',
+        category,
+        subject:     subject.trim(),
+        body:        body.trim(),
+      });
+      if (res.success) {
+        setResult({ ok: true, msg: 'お問い合わせを送信しました。担当者よりご連絡いたします。' });
+        setSubject('');
+        setBody('');
+        setCategory('system');
+      } else {
+        setResult({ ok: false, msg: res.error?.message || '送信に失敗しました' });
+      }
+    } catch (e) {
+      setResult({ ok: false, msg: '通信エラーが発生しました: ' + e.message });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>📩 問い合わせ</h2>
+      </div>
+      <div style={S.note('info')}>
+        システムに関するご質問・不具合報告・改善要望はこちらからお送りください。送信後、システム作成者よりメールにてご連絡いたします。
+      </div>
+      {result && (
+        <div style={{ ...S.note(result.ok ? 'success' : 'warn'), marginTop: 12 }}>
+          {result.ok ? '✅ ' : '⚠️ '}{result.msg}
+        </div>
+      )}
+      <div style={{ ...S.card, marginTop: 16, maxWidth: 680 }}>
+        <table style={S.formTbl}>
+          <tbody>
+            <FormRow label="送信者メールアドレス">
+              <div style={{ ...S.input, background: '#f1f5f9', color: C.muted, cursor: 'not-allowed' }}>
+                {adminInfo?.email || '（不明）'}
+              </div>
+            </FormRow>
+            <FormRow label="カテゴリ" required>
+              <select style={S.input} value={category} onChange={e => setCategory(e.target.value)}>
+                {CATEGORIES.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </FormRow>
+            <FormRow label="件名" required>
+              <input style={S.input} type="text" placeholder="例：予約画面が表示されない"
+                value={subject} onChange={e => setSubject(e.target.value)} maxLength={100} />
+            </FormRow>
+            <FormRow label="お問い合わせ内容" required>
+              <textarea style={{ ...S.input, height: 160, resize: 'vertical' }}
+                placeholder={`できるだけ詳しくお書きください。\n例：いつ頃から、どのような操作をすると、どのような問題が起きるか`}
+                value={body} onChange={e => setBody(e.target.value)} maxLength={2000} />
+              <div style={{ textAlign: 'right', fontSize: 11, color: C.muted, marginTop: 2 }}>
+                {body.length} / 2000文字
+              </div>
+            </FormRow>
+          </tbody>
+        </table>
+        <div style={{ ...S.btnRow, justifyContent: 'flex-end' }}>
+          <Btn v="primary" onClick={handleSend} style={{ opacity: sending ? 0.6 : 1, minWidth: 120 }}>
+            {sending ? '送信中...' : '📨 送信する'}
+          </Btn>
+        </div>
+      </div>
+      <div style={{ ...S.note('warn'), maxWidth: 680, marginTop: 12 }}>
+        ⚠️ 緊急の場合はシステム作成者に直接ご連絡ください。通常のお問い合わせは1〜3営業日以内にご返信いたします。
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // 管理者管理画面
 // ============================================================
 function AdminManageScreen({ currentAdminInfo }) {
