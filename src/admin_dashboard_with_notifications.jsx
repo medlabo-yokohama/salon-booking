@@ -1176,6 +1176,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
     storeName:          s['店舗名'] || '',
     storeEmail:         s['店舗メール'] || '',
     storePhone:         s['店舗電話番号'] || '',
+    developerEmail:     s['システム作成者メール'] || '',
     closedDays:         (s['定休曜日'] || '日').split(',').map(d=>d.trim()).filter(Boolean),
     closedDatesSet:     parseClosedDates(s['定休日（任意）'] || ''),
     amEnabled:          s['午前営業'] !== 'false',
@@ -1226,6 +1227,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
       '店舗名':           form.storeName,
       '店舗メール':       form.storeEmail,
       '店舗電話番号':     form.storePhone,
+      'システム作成者メール': form.developerEmail,
       '定休曜日':         form.closedDays.join(','),
       '定休日（任意）':   [...form.closedDatesSet].sort().join(','),
       '午前営業':         String(form.amEnabled),
@@ -1280,6 +1282,14 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
           <FormRow label="電話番号">
             <input style={S.input} type="tel" value={form.storePhone} onChange={e => setForm(p=>({...p,storePhone:e.target.value}))} />
           </FormRow>
+          {/* システム作成者メール（問い合わせ送信先） */}
+          <FormRow label="システム作成者メール">
+            <input style={S.input} type="email" placeholder="例：developer@example.com"
+              value={form.developerEmail} onChange={e => setForm(p=>({...p,developerEmail:e.target.value}))} />
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+              問い合わせフォームからのメールの送信先です
+            </div>
+            </FormRow>
           <FormRow label="定休日（曜日）">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {DAY_NAMES.map(d => (
@@ -2630,7 +2640,7 @@ export default function AdminDashboard() {
       case 'csv':      return <CsvExportScreen bookings={bookings} staffList={staffList} menuList={menuList} />;
       case 'shift':    return <ShiftScreen staffList={staffList} settings={settings} initialMode={shiftMode} onBack={() => setCurrentPage('staff')} />;
       case 'admins':   return <AdminManageScreen currentAdminInfo={adminInfo} />;
-      case 'inquiry':  return <div style={S.pageHeader}><h2 style={S.pageTitle}>問い合わせ</h2></div>;
+      case 'inquiry':  return <InquiryScreen adminInfo={adminInfo} />;
       default: return null;
     }
   };
