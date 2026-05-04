@@ -755,6 +755,7 @@ function InquiryScreen({ storePhone, user, storeEmail }) {
     try {
       const res = await apiPost({
         action:       'sendInquiry',
+        target:       'store',
         senderEmail:  form.senderEmail,
         category:     form.category,
         subject:      form.subject,
