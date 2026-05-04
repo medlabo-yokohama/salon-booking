@@ -718,40 +718,204 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
 }
 
 // ============================================================
-// 問い合わせ画面
+// 問い合わせ画面（実際にGASへ送信する完全版）
 // ============================================================
-function InquiryScreen({ storePhone }) {
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [sent, setSent] = useState(false);
+function InquiryScreen({ storePhone, user, storeEmail }) {
+  // カテゴリの選択肢
+  const CATEGORIES = [
+    { value: 'booking',   label: '予約について' },
+    { value: 'treatment', label: '施術について' },
+    { value: 'other',     label: 'その他' },
+  ];
 
+  const [form, setForm] = useState({
+    senderName:  user?.name  || '',
+    senderEmail: user?.email || '',
+    category:    'booking',
+    subject:     '',
+    body:        '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+  const [sent,    setSent]    = useState(false);
+  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+
+  // 送信処理（GASのsendInquiryアクションを呼ぶ）
+  const handleSend = async () => {
+    if (!form.subject.trim()) { setError('件名を入力してください'); return; }
+    if (!form.body.trim())    { setError('お問い合わせ内容を入力してください'); return; }
+    if (!form.senderEmail.trim()) { setError('返信先メールアドレスを入力してください'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.senderEmail)) {
+      setError('メールアドレスの形式が正しくありません');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiPost({
+        action:       'sendInquiry',
+        senderEmail:  form.senderEmail,
+        category:     form.category,
+        subject:      form.subject,
+        body:         form.body,
+      });
+      if (res.success) {
+        setSent(true);
+      } else {
+        setError(res.error?.message || '送信に失敗しました。しばらく経ってから再度お試しください。');
+      }
+    } catch (e) {
+      setError('通信エラーが発生しました。インターネット接続を確認してください。');
+    }
+    setLoading(false);
+  };
+
+  // 送信完了画面
   if (sent) {
     return (
-      <div style={{ textAlign: 'center', padding: '32px 0' }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📨</div>
-        <p style={{ fontWeight: 700, color: C.primary }}>送信しました</p>
-        <p style={{ color: C.muted, fontSize: 12 }}>担当者よりご連絡いたします</p>
+      <div style={{ textAlign: 'center', padding: '40px 16px' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>📨</div>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: C.primary, marginBottom: 8 }}>
+          送信が完了しました
+        </h3>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 16, lineHeight: 1.7 }}>
+          お問い合わせありがとうございます。<br />
+          担当者より折り返しご連絡いたします。
+        </p>
+        <button
+          style={{ ...S.btn('gray'), margin: '0 auto' }}
+          onClick={() => {
+            // フォームをリセットして入力画面に戻る
+            setForm({ senderName: user?.name || '', senderEmail: user?.email || '', category: 'booking', subject: '', body: '' });
+            setSent(false);
+          }}>
+          問い合わせ画面に戻る
+        </button>
       </div>
     );
   }
 
   return (
     <div>
-      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>問い合わせ</h3>
-      <div style={S.card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.primary, marginBottom: 6 }}>📞 お電話</div>
-        <p style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>{storePhone || '—'}</p>
-      </div>
+      <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>💬 お問い合わせ</h3>
+
+      {/* お電話でのお問い合わせ */}
+      {storePhone && (
+        <div style={S.card}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 4 }}>📞 お電話でのお問い合わせ</div>
+          <a href={`tel:${storePhone}`} style={{ fontSize: 18, fontWeight: 700, color: C.primary, textDecoration: 'none' }}>
+            {storePhone}
+          </a>
+        </div>
+      )}
+
+      {/* メールでのお問い合わせ */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8 }}>✉️ メールでのお問い合わせ</div>
+
+      {/* エラー表示 */}
+      {error && (
+        <div style={{ background: '#fef2f2', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.danger, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+
       <table style={S.formTbl}>
         <tbody>
-          <tr><th style={S.formTh}>件名</th><td style={S.formTd}><input style={S.formInput} type="text" placeholder="お問い合わせ件名" value={subject} onChange={e => setSubject(e.target.value)} /></td></tr>
-          <tr><th style={S.formTh}>内容</th><td style={S.formTd}><textarea style={{ ...S.formInput, height: 100 }} placeholder="内容を入力してください" value={body} onChange={e => setBody(e.target.value)} /></td></tr>
+          {/* お名前（任意） */}
+          <tr>
+            <th style={S.formTh}>お名前</th>
+            <td style={S.formTd}>
+              <input
+                style={S.formInput}
+                type="text"
+                placeholder="山田太郎"
+                value={form.senderName}
+                onChange={e => set('senderName', e.target.value)}
+              />
+            </td>
+          </tr>
+          {/* 返信先メール */}
+          <tr>
+            <th style={S.formTh}>
+              返信先メール
+              <span style={{ color: C.danger, fontSize: 11 }}>*</span>
+            </th>
+            <td style={S.formTd}>
+              <input
+                style={S.formInput}
+                type="email"
+                placeholder="yamada@example.com"
+                value={form.senderEmail}
+                onChange={e => set('senderEmail', e.target.value)}
+              />
+              {user?.email && (
+                <span style={{ color: C.muted, fontSize: 11, display: 'block', marginTop: 3 }}>
+                  登録メールアドレスから自動入力
+                </span>
+              )}
+            </td>
+          </tr>
+          {/* カテゴリ */}
+          <tr>
+            <th style={S.formTh}>種別</th>
+            <td style={S.formTd}>
+              <select
+                style={S.formInput}
+                value={form.category}
+                onChange={e => set('category', e.target.value)}>
+                {CATEGORIES.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </td>
+          </tr>
+          {/* 件名 */}
+          <tr>
+            <th style={S.formTh}>
+              件名
+              <span style={{ color: C.danger, fontSize: 11 }}>*</span>
+            </th>
+            <td style={S.formTd}>
+              <input
+                style={S.formInput}
+                type="text"
+                placeholder="お問い合わせ件名"
+                value={form.subject}
+                onChange={e => set('subject', e.target.value)}
+              />
+            </td>
+          </tr>
+          {/* お問い合わせ内容 */}
+          <tr>
+            <th style={S.formTh}>
+              内容
+              <span style={{ color: C.danger, fontSize: 11 }}>*</span>
+            </th>
+            <td style={S.formTd}>
+              <textarea
+                style={{ ...S.formInput, height: 120 }}
+                placeholder="内容をご記入ください"
+                value={form.body}
+                onChange={e => set('body', e.target.value)}
+              />
+            </td>
+          </tr>
         </tbody>
       </table>
-      <div style={S.note}>送信先：店舗アカウントのE-Mailへ送信されます</div>
+
+      {/* 送信先の案内 */}
+      <div style={{ ...S.note, marginTop: 12 }}>
+        ご入力いただいたメールアドレス宛に受付確認メールはお送りしていません。担当者より直接ご連絡いたします。
+      </div>
+
       <div style={S.btnRow}>
-        <button style={S.btn('gray')}>キャンセル</button>
-        <button style={{ ...S.btn('primary'), marginLeft: 'auto' }} onClick={() => setSent(true)}>送信</button>
+        <button
+          style={{ ...S.btn('primary'), marginLeft: 'auto', padding: '8px 24px', fontSize: 13 }}
+          onClick={handleSend}
+          disabled={loading}>
+          {loading ? '送信中...' : '送信する 📨'}
+        </button>
       </div>
     </div>
   );
@@ -774,10 +938,15 @@ export default function BookingCalendar() {
   const [completedBookingId, setCompletedBookingId] = useState(null);
   const [navPage, setNavPage] = useState('cal');
   const [storePhone, setStorePhone] = useState('');
+  const [storeEmail, setStoreEmail] = useState('');
 
   useEffect(() => {
+    // 店舗設定を取得する（電話番号・メール）
     apiGet({ action: 'getSettings' }).then(res => {
-      if (res.success) setStorePhone(res.data?.settings?.['店舗電話番号'] || '');
+      if (res.success) {
+        setStorePhone(res.data?.settings?.['店舗電話番号'] || '');
+        setStoreEmail(res.data?.settings?.['店舗メール'] || '');
+      }
     });
   }, []);
 
@@ -947,8 +1116,14 @@ export default function BookingCalendar() {
           />
         )}
 
-        {/* 問い合わせ */}
-        {page === 'inquiry' && <InquiryScreen storePhone={storePhone} />}
+        {/* 問い合わせ（ユーザー情報・店舗メールを渡す） */}
+        {page === 'inquiry' && (
+          <InquiryScreen
+            storePhone={storePhone}
+            storeEmail={storeEmail}
+            user={user}
+          />
+        )}
       </div>
 
       {/* ボトムナビ */}
