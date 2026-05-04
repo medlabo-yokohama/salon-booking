@@ -537,7 +537,7 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
     setLoading(false);
   };
 
-  useEffect(() => { if (!initialBookings) fetchBookings(); }, []);
+  useEffect(() => { if (!initialBookings) fetchBookings(); }, [lineProfile]);
 
   const handleCancel = async () => {
     if (!cancelTargets?.length) return;
