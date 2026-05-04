@@ -1043,6 +1043,7 @@ function InquiryPage({ lineProfile, registeredUser, storePhone, onBack }) {
     try {
       const res = await apiPost({
         action:      'sendInquiry',
+        target:      'store',
         senderEmail: form.senderEmail,
         category:    form.category,
         subject:     form.subject,
