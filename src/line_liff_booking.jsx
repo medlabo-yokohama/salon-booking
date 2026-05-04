@@ -2,6 +2,7 @@
 // line_liff_booking_v6.jsx
 // LINE LIFF予約UI（月カレンダー形式・空き状況○△×表示）
 // v6: 利用者登録画面追加（氏名・ふりがな・生年月日・電話・メール・PW）
+// v6.1: 問い合わせ画面追加
 // ============================================================
 import React, { useState, useEffect } from 'react';
 
@@ -110,6 +111,15 @@ const S = {
     marginBottom: 12,
     color: C.primary,
   },
+  noteWarn: {
+    background: '#fef9c3',
+    borderLeft: `4px solid ${C.warning}`,
+    padding: '8px 12px',
+    borderRadius: '0 4px 4px 0',
+    fontSize: 11.5,
+    marginBottom: 12,
+    color: '#78350f',
+  },
   required: { color: C.danger, fontSize: 11, marginLeft: 4 },
   step: (active) => ({
     display: 'flex',
@@ -188,7 +198,6 @@ function StatusBadge({ status }) {
 // キャンセル確認モーダル（個別 & 一括共用）
 // ============================================================
 function CancelModal({ bookings, onConfirm, onClose, loading }) {
-  // bookings が配列でない場合（個別キャンセル）は配列に統一
   const targets = Array.isArray(bookings) ? bookings : [bookings];
   const isBulk  = targets.length > 1;
 
@@ -221,7 +230,6 @@ function CancelModal({ bookings, onConfirm, onClose, loading }) {
           この操作は元に戻せません
         </p>
 
-        {/* キャンセル対象一覧 */}
         <div style={{ marginBottom: 20 }}>
           {targets.map(b => (
             <div key={b.bookingId} style={{
@@ -265,7 +273,6 @@ function CancelModal({ bookings, onConfirm, onClose, loading }) {
 // 予約カード（チェックボックス付き）
 // ============================================================
 function BookingCard({ booking, onCancelClick, selectable, selected, onToggle }) {
-  // 予約日時が過去かどうかを判定
   const isPast = () => {
     if (!booking.datetime) return false;
     return new Date(booking.datetime.replace(' ', 'T')) < new Date();
@@ -280,12 +287,10 @@ function BookingCard({ booking, onCancelClick, selectable, selected, onToggle })
         : booking.status === '完了'
           ? `4px solid ${C.success}`
           : `4px solid ${C.primary}`,
-      // 選択中は背景を薄く色付け
       background: selected ? '#f0f7ff' : C.surface,
       transition: 'background 0.15s',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        {/* チェックボックス（キャンセル可能な予約のみ表示） */}
         {selectable && canCancel && (
           <div
             onClick={() => onToggle(booking.bookingId)}
@@ -308,7 +313,6 @@ function BookingCard({ booking, onCancelClick, selectable, selected, onToggle })
         )}
 
         <div style={{ flex: 1 }}>
-          {/* ヘッダー行 */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>{booking.datetime}</div>
@@ -317,7 +321,6 @@ function BookingCard({ booking, onCancelClick, selectable, selected, onToggle })
             <StatusBadge status={booking.status} />
           </div>
 
-          {/* 予約内容 */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: '70px 1fr',
@@ -337,7 +340,6 @@ function BookingCard({ booking, onCancelClick, selectable, selected, onToggle })
             )}
           </div>
 
-          {/* 個別キャンセルボタン（一括選択モードでない場合のみ） */}
           {canCancel && !selectable && (
             <button
               onClick={() => onCancelClick(booking)}
@@ -366,7 +368,6 @@ function BookingCard({ booking, onCancelClick, selectable, selected, onToggle })
 // 利用者登録コンポーネント
 // ============================================================
 function RegisterPage({ lineProfile, onBack, onRegistered }) {
-  // フォームの状態
   const [regForm, setRegForm] = useState({
     name:      '',
     nameKana:  '',
@@ -378,17 +379,15 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
   });
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
-  const [showPw,    setShowPw]    = useState(false); // パスワード表示切替
-  const [showPwC,   setShowPwC]   = useState(false); // 確認PW表示切替
-  const [regStep,   setRegStep]   = useState(1);     // 1:入力 / 2:確認 / 3:完了
+  const [showPw,    setShowPw]    = useState(false);
+  const [showPwC,   setShowPwC]   = useState(false);
+  const [regStep,   setRegStep]   = useState(1);
 
   const setR = (key, val) => setRegForm(prev => ({ ...prev, [key]: val }));
 
-  // ─── バリデーション ───
   const validate = () => {
     if (!regForm.name.trim())     return '氏名を入力してください';
     if (!regForm.nameKana.trim()) return 'ふりがなを入力してください';
-    // ふりがなはひらがなのみ許可
     if (!/^[ぁ-んー　 ]+$/.test(regForm.nameKana.trim())) return 'ふりがなはひらがなで入力してください';
     if (!regForm.email.trim())    return 'メールアドレスを入力してください';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email)) return 'メールアドレスの形式が正しくありません';
@@ -398,7 +397,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
     return null;
   };
 
-  // ─── 確認画面へ進む ───
   const handleToConfirm = () => {
     const err = validate();
     if (err) { setError(err); return; }
@@ -406,7 +404,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
     setRegStep(2);
   };
 
-  // ─── 登録実行 ───
   const handleRegister = async () => {
     setLoading(true);
     setError('');
@@ -419,14 +416,11 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
         phone:     regForm.phone.trim(),
         email:     regForm.email.trim(),
         password:  regForm.password,
-        // LINE経由の場合はlineUserIdを自動紐付け
         lineUserId: lineProfile?.userId || '',
       });
       if (res.success) {
         setRegStep(3);
-        // ※ onRegisteredは完了画面の「予約画面へ進む」ボタンで呼ぶ
       } else {
-        // メール重複などのエラーを表示
         setError(res.error?.message || '登録に失敗しました');
         setRegStep(1);
       }
@@ -437,7 +431,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
     setLoading(false);
   };
 
-  // ─── 共通スタイル ───
   const inputWrap = { position: 'relative', marginBottom: 12 };
   const eyeBtn = {
     position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
@@ -445,7 +438,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
     color: C.muted, padding: 0,
   };
 
-  // ─── 完了画面 ───
   if (regStep === 3) {
     return (
       <div style={S.wrap}>
@@ -463,7 +455,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
               : '登録したメールアドレスとパスワードで予約確認が行えます。'}
           </div>
           <button style={S.btn('primary')} onClick={() => {
-            // 登録完了をメインコンポーネントに通知してフォーム自動入力
             if (onRegistered) onRegistered({ name: regForm.name, email: regForm.email, phone: regForm.phone });
             onBack();
           }}>
@@ -474,7 +465,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
     );
   }
 
-  // ─── 確認画面 ───
   if (regStep === 2) {
     return (
       <div style={S.wrap}>
@@ -530,7 +520,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
     );
   }
 
-  // ─── 入力画面（regStep === 1） ───
   return (
     <div style={S.wrap}>
       <div style={S.header}>
@@ -542,7 +531,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
       </div>
 
       <div style={S.body}>
-        {/* LINE連携バナー */}
         {lineProfile && (
           <div style={{
             background: '#f0fdf4',
@@ -561,67 +549,28 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
           </div>
         )}
 
-        {/* エラー表示 */}
         {error && (
           <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 16 }}>
             ⚠️ {error}
           </div>
         )}
 
-        {/* 氏名 */}
         <label style={S.label}>氏名<span style={S.required}>*</span></label>
-        <input
-          style={S.formInput}
-          type="text"
-          placeholder="横浜　太郎"
-          value={regForm.name}
-          onChange={e => setR('name', e.target.value)}
-        />
+        <input style={S.formInput} type="text" placeholder="横浜　太郎" value={regForm.name} onChange={e => setR('name', e.target.value)} />
 
-        {/* ふりがな */}
         <label style={S.label}>ふりがな<span style={S.required}>*</span></label>
-        <input
-          style={S.formInput}
-          type="text"
-          placeholder="よこはま　たろう"
-          value={regForm.nameKana}
-          onChange={e => setR('nameKana', e.target.value)}
-        />
+        <input style={S.formInput} type="text" placeholder="よこはま　たろう" value={regForm.nameKana} onChange={e => setR('nameKana', e.target.value)} />
 
-        {/* 生年月日 */}
         <label style={S.label}>生年月日</label>
-        <input
-          style={S.formInput}
-          type="date"
-          value={regForm.birthdate}
-          onChange={e => setR('birthdate', e.target.value)}
-          max={new Date().toISOString().split('T')[0]}
-        />
+        <input style={S.formInput} type="date" value={regForm.birthdate} onChange={e => setR('birthdate', e.target.value)} max={new Date().toISOString().split('T')[0]} />
 
-        {/* 電話番号 */}
         <label style={S.label}>電話番号</label>
-        <input
-          style={S.formInput}
-          type="tel"
-          placeholder="09012345678"
-          value={regForm.phone}
-          onChange={e => setR('phone', e.target.value)}
-        />
+        <input style={S.formInput} type="tel" placeholder="09012345678" value={regForm.phone} onChange={e => setR('phone', e.target.value)} />
 
-        {/* メールアドレス */}
         <label style={S.label}>メールアドレス<span style={S.required}>*</span></label>
-        <input
-          style={S.formInput}
-          type="email"
-          placeholder="yamada@example.com"
-          value={regForm.email}
-          onChange={e => setR('email', e.target.value)}
-        />
+        <input style={S.formInput} type="email" placeholder="yamada@example.com" value={regForm.email} onChange={e => setR('email', e.target.value)} />
 
-        {/* パスワード */}
-        <label style={S.label}>パスワード<span style={S.required}>*</span>
-          <span style={{ fontWeight: 400, marginLeft: 6 }}>（8文字以上）</span>
-        </label>
+        <label style={S.label}>パスワード<span style={S.required}>*</span><span style={{ fontWeight: 400, marginLeft: 6 }}>（8文字以上）</span></label>
         <div style={inputWrap}>
           <input
             style={{ ...S.formInput, marginBottom: 0, paddingRight: 40 }}
@@ -635,7 +584,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
           </button>
         </div>
 
-        {/* パスワード強度インジケーター */}
         {regForm.password && (
           <div style={{ marginTop: 4, marginBottom: 12 }}>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
@@ -668,7 +616,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
           </div>
         )}
 
-        {/* パスワード確認 */}
         <label style={S.label}>パスワード（確認）<span style={S.required}>*</span></label>
         <div style={inputWrap}>
           <input
@@ -676,7 +623,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
               ...S.formInput,
               marginBottom: 0,
               paddingRight: 40,
-              // 一致・不一致を色で表示
               borderColor: regForm.passwordConfirm
                 ? (regForm.password === regForm.passwordConfirm ? C.success : C.danger)
                 : C.border,
@@ -690,7 +636,6 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
             {showPwC ? '🙈' : '👁'}
           </button>
         </div>
-        {/* 一致・不一致メッセージ */}
         {regForm.passwordConfirm && (
           <div style={{
             fontSize: 11,
@@ -703,12 +648,8 @@ function RegisterPage({ lineProfile, onBack, onRegistered }) {
         )}
 
         <div style={{ marginTop: 8 }}>
-          <button style={S.btn('primary')} onClick={handleToConfirm}>
-            確認画面へ →
-          </button>
-          <button style={S.btn('gray')} onClick={onBack}>
-            ← 戻る
-          </button>
+          <button style={S.btn('primary')} onClick={handleToConfirm}>確認画面へ →</button>
+          <button style={S.btn('gray')} onClick={onBack}>← 戻る</button>
         </div>
       </div>
     </div>
@@ -732,7 +673,6 @@ function LoginPage({ onBack, onLoggedIn }) {
     try {
       const res = await apiPost({ action: 'loginUser', email: email.trim(), password });
       if (res.success) {
-        // ログイン成功：ユーザー情報をメインコンポーネントへ通知
         onLoggedIn(res.data);
       } else {
         setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません');
@@ -765,14 +705,7 @@ function LoginPage({ onBack, onLoggedIn }) {
         )}
 
         <label style={S.label}>メールアドレス<span style={S.required}>*</span></label>
-        <input
-          style={S.formInput}
-          type="email"
-          placeholder="yamada@example.com"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleLogin()}
-        />
+        <input style={S.formInput} type="email" placeholder="yamada@example.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
 
         <label style={S.label}>パスワード<span style={S.required}>*</span></label>
         <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -784,27 +717,19 @@ function LoginPage({ onBack, onLoggedIn }) {
             onChange={e => setPassword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
           />
-          <button
-            onClick={() => setShowPw(v => !v)}
-            type="button"
+          <button onClick={() => setShowPw(v => !v)} type="button"
             style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: C.muted, padding: 0 }}>
             {showPw ? '🙈' : '👁'}
           </button>
         </div>
 
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          style={{ ...S.btn('primary'), opacity: loading ? 0.7 : 1, marginTop: 8 }}>
+        <button onClick={handleLogin} disabled={loading} style={{ ...S.btn('primary'), opacity: loading ? 0.7 : 1, marginTop: 8 }}>
           {loading ? 'ログイン中...' : '🔑 ログインする'}
         </button>
 
-        {/* 新規登録へのリンク */}
         <div style={{ textAlign: 'center', marginTop: 8, fontSize: 13, color: C.muted }}>
           アカウントをお持ちでない方は
-          <span
-            onClick={onBack}
-            style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', marginLeft: 4, textDecoration: 'underline' }}>
+          <span onClick={onBack} style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', marginLeft: 4, textDecoration: 'underline' }}>
             新規登録
           </span>
         </div>
@@ -817,16 +742,13 @@ function LoginPage({ onBack, onLoggedIn }) {
 // ブラウザ用：予約検索画面
 // ============================================================
 function BookingSearch({ onFound, onBack }) {
-  const [searchType, setSearchType] = useState('bookingId'); // 'bookingId' | 'email'
+  const [searchType, setSearchType] = useState('bookingId');
   const [inputVal, setInputVal]     = useState('');
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
 
   const handleSearch = async () => {
-    if (!inputVal.trim()) {
-      setError('入力してください');
-      return;
-    }
+    if (!inputVal.trim()) { setError('入力してください'); return; }
     setLoading(true);
     setError('');
     try {
@@ -851,11 +773,7 @@ function BookingSearch({ onFound, onBack }) {
   return (
     <div style={S.wrap}>
       <div style={S.header}>
-        <button
-          onClick={onBack}
-          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>
-          ‹
-        </button>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>‹</button>
         <h3 style={S.headerTitle}>予約確認・キャンセル</h3>
       </div>
 
@@ -864,90 +782,37 @@ function BookingSearch({ onFound, onBack }) {
           予約IDまたはメールアドレスで予約を検索できます
         </div>
 
-        {/* 検索方法の切り替えタブ */}
-        <div style={{
-          display: 'flex',
-          border: `1.5px solid ${C.primary}`,
-          borderRadius: 8,
-          overflow: 'hidden',
-          marginBottom: 20,
-        }}>
+        <div style={{ display: 'flex', border: `1.5px solid ${C.primary}`, borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
           {[
             { key: 'bookingId', label: '🔖 予約IDで検索' },
             { key: 'email',     label: '✉️ メールで検索' },
           ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => { setSearchType(tab.key); setInputVal(''); setError(''); }}
-              style={{
-                flex: 1,
-                padding: '10px 0',
-                border: 'none',
-                background: searchType === tab.key ? C.primary : '#fff',
-                color: searchType === tab.key ? '#fff' : C.primary,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}>
+            <button key={tab.key} onClick={() => { setSearchType(tab.key); setInputVal(''); setError(''); }}
+              style={{ flex: 1, padding: '10px 0', border: 'none', background: searchType === tab.key ? C.primary : '#fff', color: searchType === tab.key ? '#fff' : C.primary, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* 入力フィールド */}
         {searchType === 'bookingId' ? (
           <>
             <label style={S.label}>予約ID<span style={S.required}>*</span></label>
-            <input
-              style={S.formInput}
-              type="text"
-              placeholder="例：BK20260501001"
-              value={inputVal}
-              onChange={e => setInputVal(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            />
-            <p style={{ fontSize: 11.5, color: C.muted, marginTop: -8, marginBottom: 16 }}>
-              予約完了時にLINEまたはメールでお送りした予約IDを入力してください
-            </p>
+            <input style={S.formInput} type="text" placeholder="例：BK20260501001" value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
           </>
         ) : (
           <>
             <label style={S.label}>メールアドレス<span style={S.required}>*</span></label>
-            <input
-              style={S.formInput}
-              type="email"
-              placeholder="例：yamada@example.com"
-              value={inputVal}
-              onChange={e => setInputVal(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            />
-            <p style={{ fontSize: 11.5, color: C.muted, marginTop: -8, marginBottom: 16 }}>
-              予約時に登録したメールアドレスを入力してください
-            </p>
+            <input style={S.formInput} type="email" placeholder="例：yamada@example.com" value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
           </>
         )}
 
-        {/* エラー表示 */}
         {error && (
-          <div style={{
-            background: C.dangerPale,
-            border: `1px solid ${C.danger}`,
-            borderRadius: 8,
-            padding: '10px 14px',
-            fontSize: 13,
-            color: C.danger,
-            marginBottom: 16,
-          }}>
+          <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 16 }}>
             ⚠️ {error}
           </div>
         )}
 
-        <button
-          onClick={handleSearch}
-          disabled={loading}
-          style={{ ...S.btn('primary'), opacity: loading ? 0.7 : 1 }}>
+        <button onClick={handleSearch} disabled={loading} style={{ ...S.btn('primary'), opacity: loading ? 0.7 : 1 }}>
           {loading ? '検索中...' : '🔍 予約を検索する'}
         </button>
       </div>
@@ -957,30 +822,24 @@ function BookingSearch({ onFound, onBack }) {
 
 // ============================================================
 // マイページ（予約確認・キャンセル）
-// LINE経由とブラウザ経由で共用。ブラウザ時は searchedBookings を渡す
 // ============================================================
 function MyPage({ lineProfile, onBack, initialBookings = null }) {
   const [bookings, setBookings]           = useState(initialBookings || []);
-  const [loading, setLoading]             = useState(!initialBookings); // 初期データなければ読み込む
-  const [cancelTargets, setCancelTargets] = useState(null);  // キャンセル対象（配列）
+  const [loading, setLoading]             = useState(!initialBookings);
+  const [cancelTargets, setCancelTargets] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelDone, setCancelDone]       = useState(false);
   const [error, setError]                 = useState('');
   const [filter, setFilter]               = useState('upcoming');
-  // 一括キャンセルモード
   const [bulkMode, setBulkMode]           = useState(false);
   const [selectedIds, setSelectedIds]     = useState(new Set());
 
-  // LINE経由の場合は予約一覧を取得
   const fetchBookings = async () => {
     if (!lineProfile?.userId) return;
     setLoading(true);
     setError('');
     try {
-      const res = await apiGet({
-        action: 'getUserBookings',
-        lineUserId: lineProfile.userId,
-      });
+      const res = await apiGet({ action: 'getUserBookings', lineUserId: lineProfile.userId });
       if (res.success) {
         setBookings(res.data.bookings || []);
       } else {
@@ -996,37 +855,24 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
     if (!initialBookings) fetchBookings();
   }, []);
 
-  // ─── キャンセル実行（個別・一括共用） ───
   const handleCancel = async () => {
     if (!cancelTargets?.length) return;
     setCancelLoading(true);
     setError('');
     try {
-      // 複数件は順番にキャンセル
       for (const b of cancelTargets) {
-        await apiPost({
-          action: 'cancelBooking',
-          bookingId: b.bookingId,
-          lineUserId: lineProfile?.userId || '',
-        });
+        await apiPost({ action: 'cancelBooking', bookingId: b.bookingId, lineUserId: lineProfile?.userId || '' });
       }
       setCancelDone(true);
-      // 一覧を更新（LINE経由は再取得、ブラウザ経由はローカルで更新）
       if (lineProfile?.userId && !initialBookings) {
         await fetchBookings();
       } else {
-        // ブラウザ経由：ローカルのステータスを更新
         const cancelledIds = new Set(cancelTargets.map(b => b.bookingId));
-        setBookings(prev => prev.map(b =>
-          cancelledIds.has(b.bookingId) ? { ...b, status: 'キャンセル' } : b
-        ));
+        setBookings(prev => prev.map(b => cancelledIds.has(b.bookingId) ? { ...b, status: 'キャンセル' } : b));
       }
       setSelectedIds(new Set());
       setBulkMode(false);
-      setTimeout(() => {
-        setCancelTargets(null);
-        setCancelDone(false);
-      }, 1500);
+      setTimeout(() => { setCancelTargets(null); setCancelDone(false); }, 1500);
     } catch (e) {
       setError('通信エラーが発生しました');
       setCancelTargets(null);
@@ -1034,7 +880,6 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
     setCancelLoading(false);
   };
 
-  // ─── チェックボックスのトグル ───
   const toggleSelect = (bookingId) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -1043,21 +888,18 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
     });
   };
 
-  // ─── 全選択・全解除 ───
   const toggleSelectAll = () => {
     const cancelableIds = filteredBookings
       .filter(b => b.status !== 'キャンセル' && b.status !== '完了')
       .filter(b => new Date((b.datetime || '').replace(' ', 'T')) >= new Date())
       .map(b => b.bookingId);
-
     if (selectedIds.size === cancelableIds.length) {
-      setSelectedIds(new Set()); // 全解除
+      setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(cancelableIds)); // 全選択
+      setSelectedIds(new Set(cancelableIds));
     }
   };
 
-  // ─── フィルタリング ───
   const now = new Date();
   const filteredBookings = bookings.filter(b => {
     if (filter === 'all') return true;
@@ -1065,7 +907,6 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
     return new Date((b.datetime || '').replace(' ', 'T')) >= now;
   });
 
-  // キャンセル可能な予約数（全選択ボタン用）
   const cancelableCount = filteredBookings.filter(b =>
     b.status !== 'キャンセル' && b.status !== '完了' &&
     new Date((b.datetime || '').replace(' ', 'T')) >= now
@@ -1073,63 +914,24 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
 
   return (
     <div style={S.wrap}>
-      {/* ヘッダー */}
       <div style={S.header}>
-        <button
-          onClick={onBack}
-          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>
-          ‹
-        </button>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>‹</button>
         <h3 style={S.headerTitle}>予約確認</h3>
-        {lineProfile && (
-          <span style={{ fontSize: 11, opacity: 0.8 }}>{lineProfile.displayName} 様</span>
-        )}
+        {lineProfile && <span style={{ fontSize: 11, opacity: 0.8 }}>{lineProfile.displayName} 様</span>}
       </div>
 
       <div style={S.body}>
-        {/* フィルタータブ */}
-        <div style={{
-          display: 'flex',
-          border: `1.5px solid ${C.primary}`,
-          borderRadius: 8,
-          overflow: 'hidden',
-          marginBottom: 16,
-        }}>
-          {[
-            { key: 'upcoming', label: '今後の予約' },
-            { key: 'all',      label: 'すべて表示' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => { setFilter(tab.key); setBulkMode(false); setSelectedIds(new Set()); }}
-              style={{
-                flex: 1,
-                padding: '10px 0',
-                border: 'none',
-                background: filter === tab.key ? C.primary : '#fff',
-                color: filter === tab.key ? '#fff' : C.primary,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}>
+        <div style={{ display: 'flex', border: `1.5px solid ${C.primary}`, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+          {[{ key: 'upcoming', label: '今後の予約' }, { key: 'all', label: 'すべて表示' }].map(tab => (
+            <button key={tab.key} onClick={() => { setFilter(tab.key); setBulkMode(false); setSelectedIds(new Set()); }}
+              style={{ flex: 1, padding: '10px 0', border: 'none', background: filter === tab.key ? C.primary : '#fff', color: filter === tab.key ? '#fff' : C.primary, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* エラー表示 */}
         {error && (
-          <div style={{
-            background: C.dangerPale,
-            border: `1px solid ${C.danger}`,
-            borderRadius: 8,
-            padding: '10px 14px',
-            fontSize: 13,
-            color: C.danger,
-            marginBottom: 12,
-          }}>
+          <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 12 }}>
             ⚠️ {error}
           </div>
         )}
@@ -1145,159 +947,243 @@ function MyPage({ lineProfile, onBack, initialBookings = null }) {
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
               {filter === 'upcoming' ? '今後の予約はありません' : '予約が見つかりません'}
             </div>
-            {filter === 'upcoming' && bookings.length > 0 && (
-              <div style={{ fontSize: 12, marginTop: 8 }}>
-                <span
-                  onClick={() => setFilter('all')}
-                  style={{ color: C.primary, textDecoration: 'underline', cursor: 'pointer' }}>
-                  過去の予約を確認する
-                </span>
-              </div>
-            )}
           </div>
         ) : (
           <div>
-            {/* 件数 & 一括キャンセルボタン */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 12, color: C.muted }}>
                 {filteredBookings.length}件の予約
-                {bulkMode && selectedIds.size > 0 && (
-                  <span style={{ color: C.danger, marginLeft: 8, fontWeight: 700 }}>
-                    {selectedIds.size}件選択中
-                  </span>
-                )}
+                {bulkMode && selectedIds.size > 0 && <span style={{ color: C.danger, marginLeft: 8, fontWeight: 700 }}>{selectedIds.size}件選択中</span>}
               </div>
-              {/* キャンセル可能な予約がある場合のみ一括ボタンを表示 */}
               {cancelableCount > 0 && (
-                <button
-                  onClick={() => {
-                    setBulkMode(prev => !prev);
-                    setSelectedIds(new Set());
-                  }}
-                  style={{
-                    padding: '5px 12px',
-                    border: `1.5px solid ${bulkMode ? C.muted : C.danger}`,
-                    borderRadius: 6,
-                    background: '#fff',
-                    color: bulkMode ? C.muted : C.danger,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}>
+                <button onClick={() => { setBulkMode(prev => !prev); setSelectedIds(new Set()); }}
+                  style={{ padding: '5px 12px', border: `1.5px solid ${bulkMode ? C.muted : C.danger}`, borderRadius: 6, background: '#fff', color: bulkMode ? C.muted : C.danger, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {bulkMode ? '選択を解除' : '☑ 一括キャンセル'}
                 </button>
               )}
             </div>
 
-            {/* 一括モードのコントロールバー */}
             {bulkMode && (
-              <div style={{
-                display: 'flex',
-                gap: 8,
-                marginBottom: 12,
-                padding: '10px 12px',
-                background: '#f8fafc',
-                border: `1px solid ${C.border}`,
-                borderRadius: 8,
-                alignItems: 'center',
-              }}>
-                <button
-                  onClick={toggleSelectAll}
-                  style={{
-                    padding: '5px 12px',
-                    border: `1.5px solid ${C.primary}`,
-                    borderRadius: 6,
-                    background: selectedIds.size === cancelableCount && cancelableCount > 0 ? C.primary : '#fff',
-                    color: selectedIds.size === cancelableCount && cancelableCount > 0 ? '#fff' : C.primary,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    flexShrink: 0,
-                  }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, padding: '10px 12px', background: '#f8fafc', border: `1px solid ${C.border}`, borderRadius: 8, alignItems: 'center' }}>
+                <button onClick={toggleSelectAll}
+                  style={{ padding: '5px 12px', border: `1.5px solid ${C.primary}`, borderRadius: 6, background: selectedIds.size === cancelableCount && cancelableCount > 0 ? C.primary : '#fff', color: selectedIds.size === cancelableCount && cancelableCount > 0 ? '#fff' : C.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
                   {selectedIds.size === cancelableCount && cancelableCount > 0 ? '全解除' : '全選択'}
                 </button>
-                <span style={{ fontSize: 12, color: C.muted, flex: 1 }}>
-                  キャンセルしたい予約にチェックを入れてください
-                </span>
-                <button
-                  onClick={() => {
-                    if (selectedIds.size === 0) return;
-                    const targets = bookings.filter(b => selectedIds.has(b.bookingId));
-                    setCancelTargets(targets);
-                  }}
+                <span style={{ fontSize: 12, color: C.muted, flex: 1 }}>キャンセルしたい予約にチェックを入れてください</span>
+                <button onClick={() => { if (selectedIds.size === 0) return; const targets = bookings.filter(b => selectedIds.has(b.bookingId)); setCancelTargets(targets); }}
                   disabled={selectedIds.size === 0}
-                  style={{
-                    padding: '5px 12px',
-                    border: 'none',
-                    borderRadius: 6,
-                    background: selectedIds.size > 0 ? C.danger : '#e2e8f0',
-                    color: selectedIds.size > 0 ? '#fff' : C.muted,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: selectedIds.size > 0 ? 'pointer' : 'default',
-                    fontFamily: 'inherit',
-                    flexShrink: 0,
-                    transition: 'all 0.15s',
-                  }}>
+                  style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: selectedIds.size > 0 ? C.danger : '#e2e8f0', color: selectedIds.size > 0 ? '#fff' : C.muted, fontSize: 12, fontWeight: 700, cursor: selectedIds.size > 0 ? 'pointer' : 'default', fontFamily: 'inherit', flexShrink: 0 }}>
                   キャンセル実行
                 </button>
               </div>
             )}
 
-            {/* 予約一覧 */}
             {filteredBookings.map(b => (
-              <BookingCard
-                key={b.bookingId}
-                booking={b}
-                onCancelClick={b => setCancelTargets([b])}
-                selectable={bulkMode}
-                selected={selectedIds.has(b.bookingId)}
-                onToggle={toggleSelect}
-              />
+              <BookingCard key={b.bookingId} booking={b} onCancelClick={b => setCancelTargets([b])} selectable={bulkMode} selected={selectedIds.has(b.bookingId)} onToggle={toggleSelect} />
             ))}
           </div>
         )}
 
-        {/* 新規予約ボタン */}
         <div style={{ marginTop: 16 }}>
-          <button style={S.btn('primary')} onClick={onBack}>
-            ＋ 新しく予約する
-          </button>
+          <button style={S.btn('primary')} onClick={onBack}>＋ 新しく予約する</button>
         </div>
       </div>
 
-      {/* キャンセル確認モーダル */}
       {cancelTargets && !cancelDone && (
-        <CancelModal
-          bookings={cancelTargets}
-          onConfirm={handleCancel}
-          onClose={() => setCancelTargets(null)}
-          loading={cancelLoading}
-        />
+        <CancelModal bookings={cancelTargets} onConfirm={handleCancel} onClose={() => setCancelTargets(null)} loading={cancelLoading} />
       )}
 
-      {/* キャンセル完了オーバーレイ */}
       {cancelDone && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 12,
-            padding: '32px 24px', textAlign: 'center',
-            maxWidth: 300, width: '90%',
-          }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '32px 24px', textAlign: 'center', maxWidth: 300, width: '90%' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: C.success }}>
-              キャンセルしました
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.success }}>キャンセルしました</div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// 問い合わせ画面（LINE LIFF版）
+// ============================================================
+function InquiryPage({ lineProfile, registeredUser, storePhone, onBack }) {
+  // カテゴリの選択肢
+  const CATEGORIES = [
+    { value: 'booking',   label: '予約について' },
+    { value: 'treatment', label: '施術について' },
+    { value: 'other',     label: 'その他' },
+  ];
+
+  const [form, setForm] = useState({
+    senderName:  registeredUser?.name  || lineProfile?.displayName || '',
+    senderEmail: registeredUser?.email || '',
+    category:    'booking',
+    subject:     '',
+    body:        '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+  const [sent,    setSent]    = useState(false);
+  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+
+  // 送信処理（GASのsendInquiryアクションを呼ぶ）
+  const handleSend = async () => {
+    if (!form.subject.trim())     { setError('件名を入力してください'); return; }
+    if (!form.body.trim())        { setError('お問い合わせ内容を入力してください'); return; }
+    if (!form.senderEmail.trim()) { setError('返信先メールアドレスを入力してください'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.senderEmail)) {
+      setError('メールアドレスの形式が正しくありません');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiPost({
+        action:      'sendInquiry',
+        senderEmail: form.senderEmail,
+        category:    form.category,
+        subject:     form.subject,
+        body:        form.body,
+      });
+      if (res.success) {
+        setSent(true);
+      } else {
+        setError(res.error?.message || '送信に失敗しました。しばらく経ってから再度お試しください。');
+      }
+    } catch (e) {
+      setError('通信エラーが発生しました。インターネット接続を確認してください。');
+    }
+    setLoading(false);
+  };
+
+  // 送信完了画面
+  if (sent) {
+    return (
+      <div style={S.wrap}>
+        <div style={S.header}>
+          <h3 style={S.headerTitle}>問い合わせ</h3>
+        </div>
+        <div style={{ ...S.body, textAlign: 'center', paddingTop: 48 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>📨</div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: C.primary, marginBottom: 8 }}>
+            送信が完了しました
+          </h3>
+          <p style={{ color: C.muted, fontSize: 13, marginBottom: 20, lineHeight: 1.7 }}>
+            お問い合わせありがとうございます。<br />
+            担当者より折り返しご連絡いたします。
+          </p>
+          <button style={S.btn('primary')} onClick={onBack}>予約画面に戻る</button>
+          <button style={S.btn('gray')} onClick={() => {
+            // フォームをリセットして再入力できるようにする
+            setForm({ senderName: registeredUser?.name || lineProfile?.displayName || '', senderEmail: registeredUser?.email || '', category: 'booking', subject: '', body: '' });
+            setSent(false);
+          }}>
+            続けて問い合わせる
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={S.wrap}>
+      <div style={S.header}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <h3 style={S.headerTitle}>💬 問い合わせ</h3>
+      </div>
+
+      <div style={S.body}>
+        {/* お電話でのお問い合わせ */}
+        {storePhone && (
+          <div style={S.card}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 4 }}>📞 お電話でのお問い合わせ</div>
+            <a href={`tel:${storePhone}`} style={{ fontSize: 18, fontWeight: 700, color: C.primary, textDecoration: 'none' }}>
+              {storePhone}
+            </a>
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 12 }}>✉️ メールでのお問い合わせ</div>
+
+        {/* エラー表示 */}
+        {error && (
+          <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.danger, marginBottom: 16 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {/* お名前（任意） */}
+        <label style={S.label}>お名前</label>
+        <input
+          style={S.formInput}
+          type="text"
+          placeholder="山田太郎"
+          value={form.senderName}
+          onChange={e => set('senderName', e.target.value)}
+        />
+
+        {/* 返信先メール */}
+        <label style={S.label}>
+          返信先メールアドレス
+          <span style={S.required}>*</span>
+        </label>
+        <input
+          style={S.formInput}
+          type="email"
+          placeholder="yamada@example.com"
+          value={form.senderEmail}
+          onChange={e => set('senderEmail', e.target.value)}
+        />
+        {registeredUser?.email && (
+          <div style={{ fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 12 }}>
+            登録メールアドレスから自動入力しました
+          </div>
+        )}
+
+        {/* カテゴリ */}
+        <label style={S.label}>種別</label>
+        <select style={S.formInput} value={form.category} onChange={e => set('category', e.target.value)}>
+          {CATEGORIES.map(c => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
+
+        {/* 件名 */}
+        <label style={S.label}>件名<span style={S.required}>*</span></label>
+        <input
+          style={S.formInput}
+          type="text"
+          placeholder="お問い合わせ件名"
+          value={form.subject}
+          onChange={e => set('subject', e.target.value)}
+        />
+
+        {/* 内容 */}
+        <label style={S.label}>お問い合わせ内容<span style={S.required}>*</span></label>
+        <textarea
+          style={{ ...S.formInput, height: 140, resize: 'vertical' }}
+          placeholder="内容をご記入ください"
+          value={form.body}
+          onChange={e => set('body', e.target.value)}
+        />
+
+        {/* 注意書き */}
+        <div style={{ ...S.noteWarn, marginTop: 4 }}>
+          ご入力いただいたメールアドレス宛に受付確認メールはお送りしていません。担当者より直接ご連絡いたします。
+        </div>
+
+        {/* 送信ボタン */}
+        <button
+          style={{ ...S.btn('primary'), marginTop: 8, opacity: loading ? 0.7 : 1 }}
+          onClick={handleSend}
+          disabled={loading}>
+          {loading ? '送信中...' : '📨 送信する'}
+        </button>
+        <button style={S.btn('gray')} onClick={onBack}>← 戻る</button>
+      </div>
     </div>
   );
 }
@@ -1339,19 +1225,9 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <button
-          onClick={() => onChangeMonth(-1)}
-          style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '4px 12px', fontSize: 16, cursor: 'pointer' }}>
-          ‹
-        </button>
-        <span style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>
-          {year}年{month + 1}月
-        </span>
-        <button
-          onClick={() => onChangeMonth(1)}
-          style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '4px 12px', fontSize: 16, cursor: 'pointer' }}>
-          ›
-        </button>
+        <button onClick={() => onChangeMonth(-1)} style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '4px 12px', fontSize: 16, cursor: 'pointer' }}>‹</button>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>{year}年{month + 1}月</span>
+        <button onClick={() => onChangeMonth(1)} style={{ background: 'none', border: `1.5px solid ${C.border}`, borderRadius: 6, padding: '4px 12px', fontSize: 16, cursor: 'pointer' }}>›</button>
       </div>
 
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 10 }}>
@@ -1371,10 +1247,7 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
         <thead>
           <tr>
             {DAY_LABELS.map((d, i) => (
-              <th key={d} style={{
-                padding: '6px 0', textAlign: 'center', fontSize: 12, fontWeight: 600,
-                color: i === 0 ? '#b91c1c' : i === 6 ? '#1d4ed8' : C.muted,
-              }}>
+              <th key={d} style={{ padding: '6px 0', textAlign: 'center', fontSize: 12, fontWeight: 600, color: i === 0 ? '#b91c1c' : i === 6 ? '#1d4ed8' : C.muted }}>
                 {d}
               </th>
             ))}
@@ -1406,22 +1279,13 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
                         opacity: isPast ? 0.35 : 1,
                         transition: 'background 0.15s',
                       }}>
-                      <div style={{
-                        fontSize: 13,
-                        fontWeight: isToday || isSelected ? 700 : 400,
-                        color: isSelected ? '#fff' : di === 0 ? '#b91c1c' : di === 6 ? '#1d4ed8' : C.text,
-                        lineHeight: 1.2,
-                      }}>
+                      <div style={{ fontSize: 13, fontWeight: isToday || isSelected ? 700 : 400, color: isSelected ? '#fff' : di === 0 ? '#b91c1c' : di === 6 ? '#1d4ed8' : C.text, lineHeight: 1.2 }}>
                         {d}
                         {isToday && !isSelected && (
                           <span style={{ display: 'block', fontSize: 8, color: C.primary, fontWeight: 700, lineHeight: 1 }}>今日</span>
                         )}
                       </div>
-                      <div style={{
-                        fontSize: 14, fontWeight: 700,
-                        color: isSelected ? '#fff' : avail.color,
-                        lineHeight: 1.2, marginTop: 1,
-                      }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: isSelected ? '#fff' : avail.color, lineHeight: 1.2, marginTop: 1 }}>
                         {isPast ? '' : avail.mark}
                       </div>
                     </div>
@@ -1464,21 +1328,8 @@ function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot,
         {slots.map(slot => {
           const isActive = slot === selectedSlot;
           return (
-            <button
-              key={slot}
-              onClick={() => onSelectSlot(slot)}
-              style={{
-                padding: '8px 18px',
-                border: `1.5px solid ${isActive ? C.primary : C.border}`,
-                borderRadius: 20,
-                background: isActive ? C.primary : '#fff',
-                color: isActive ? '#fff' : C.text,
-                fontSize: 13,
-                fontWeight: isActive ? 700 : 400,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}>
+            <button key={slot} onClick={() => onSelectSlot(slot)}
+              style={{ padding: '8px 18px', border: `1.5px solid ${isActive ? C.primary : C.border}`, borderRadius: 20, background: isActive ? C.primary : '#fff', color: isActive ? '#fff' : C.text, fontSize: 13, fontWeight: isActive ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
               {slot}
             </button>
           );
@@ -1494,45 +1345,23 @@ function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot,
 function MenuRadioItem({ menu, selected, onClick }) {
   const isSelected = selected === menu.menuId;
   return (
-    <div
-      onClick={onClick}
+    <div onClick={onClick}
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-        padding: '14px 16px',
-        borderRadius: 10,
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '14px 16px', borderRadius: 10,
         background: isSelected ? C.primaryPale : '#f8fafc',
         border: `2px solid ${isSelected ? C.primary : C.border}`,
-        marginBottom: 10,
-        cursor: 'pointer',
-        transition: 'all 0.15s',
+        marginBottom: 10, cursor: 'pointer', transition: 'all 0.15s',
         WebkitTapHighlightColor: 'transparent',
       }}>
-      {/* カスタムラジオボタン（〇→● 改善済み） */}
-      <div style={{
-        width: 22, height: 22, borderRadius: '50%',
-        border: `2.5px solid ${isSelected ? C.primary : C.border}`,
-        background: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, transition: 'all 0.15s',
-      }}>
-        {isSelected && (
-          <div style={{ width: 12, height: 12, borderRadius: '50%', background: C.primary }} />
-        )}
+      <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2.5px solid ${isSelected ? C.primary : C.border}`, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+        {isSelected && <div style={{ width: 12, height: 12, borderRadius: '50%', background: C.primary }} />}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{
-          fontSize: 14, fontWeight: isSelected ? 700 : 600,
-          color: isSelected ? C.primary : C.text, marginBottom: 2,
-        }}>
-          {menu.name}
-        </div>
+        <div style={{ fontSize: 14, fontWeight: isSelected ? 700 : 600, color: isSelected ? C.primary : C.text, marginBottom: 2 }}>{menu.name}</div>
         <div style={{ fontSize: 12, color: C.muted }}>⏱ {menu.durationMin}分</div>
       </div>
-      {isSelected && (
-        <div style={{ color: C.primary, fontSize: 18, fontWeight: 700, flexShrink: 0 }}>✓</div>
-      )}
+      {isSelected && <div style={{ color: C.primary, fontSize: 18, fontWeight: 700, flexShrink: 0 }}>✓</div>}
     </div>
   );
 }
@@ -1543,7 +1372,7 @@ function MenuRadioItem({ menu, selected, onClick }) {
 export default function LineLiffBooking() {
   const [liffReady, setLiffReady]           = useState(false);
   const [lineProfile, setLineProfile]       = useState(null);
-  const [isLineEnv, setIsLineEnv]           = useState(false); // LINE環境かどうか
+  const [isLineEnv, setIsLineEnv]           = useState(false);
   const [registeredUser, setRegisteredUser] = useState(null);
   const [step, setStep]                     = useState(1);
   const [menuList, setMenuList]             = useState([]);
@@ -1556,11 +1385,10 @@ export default function LineLiffBooking() {
   const [completed, setCompleted]           = useState(null);
   const [calDate, setCalDate]               = useState(new Date());
   const [availLoading, setAvailLoading]     = useState(false);
-  // 画面切り替え： 'booking' | 'mypage' | 'search' | 'searchResult' | 'register' | 'login'
+  // 画面切り替え： 'booking' | 'mypage' | 'search' | 'searchResult' | 'register' | 'login' | 'inquiry'
   const [screen, setScreen]                 = useState('booking');
-  // ブラウザ検索で見つかった予約
   const [searchedBookings, setSearchedBookings] = useState([]);
-  const [storePhone, setStorePhone] = useState('');
+  const [storePhone, setStorePhone]         = useState('');
 
   const isNoStaff = !selection.staffId || selection.staffId === 'any';
 
@@ -1570,7 +1398,6 @@ export default function LineLiffBooking() {
       try {
         await liff.init({ liffId: LIFF_ID });
         setLiffReady(true);
-        // LINEアプリ内かどうかを判定
         const inLine = liff.isInClient();
         setIsLineEnv(inLine);
 
@@ -1592,6 +1419,7 @@ export default function LineLiffBooking() {
     Promise.all([
       apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
       apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
+      // 店舗電話番号を取得する
       apiGet({ action: 'getSettings' }).then(r => r.success && setStorePhone(r.data?.settings?.['店舗電話番号'] || '')),
     ]);
   }, []);
@@ -1663,18 +1491,12 @@ export default function LineLiffBooking() {
 
   // ─── 画面切り替え ───
 
-  // ブラウザ版：ログイン画面
   if (screen === 'login') {
     return (
       <LoginPage
         onBack={() => setScreen('booking')}
         onLoggedIn={(data) => {
-          // ログイン成功：フォームに情報を反映して予約画面へ
-          setForm({
-            name:  data.name  || '',
-            phone: data.phone || '',
-            email: data.email || '',
-          });
+          setForm({ name: data.name || '', phone: data.phone || '', email: data.email || '' });
           setRegisteredUser({ name: data.name, phone: data.phone, email: data.email });
           setScreen('booking');
         }}
@@ -1682,57 +1504,44 @@ export default function LineLiffBooking() {
     );
   }
 
-  // 利用者登録画面
   if (screen === 'register') {
     return (
       <RegisterPage
         lineProfile={lineProfile}
         onBack={() => setScreen('booking')}
         onRegistered={(data) => {
-          // 登録完了後、予約フォームへ情報を自動入力
-          setForm({
-            name:  data.name  || '',
-            phone: data.phone || '',
-            email: data.email || '',
-          });
-          // registeredUserを更新して「登録済み」状態にする
+          setForm({ name: data.name || '', phone: data.phone || '', email: data.email || '' });
           setRegisteredUser({ name: data.name, phone: data.phone, email: data.email });
-          // ※ onBackは呼ばずここでsetScreen（二重呼び出し防止）
         }}
       />
     );
   }
 
-  // LINE経由：マイページ（lineUserIdで自動取得）
   if (screen === 'mypage') {
-    return (
-      <MyPage
-        lineProfile={lineProfile}
-        onBack={() => setScreen('booking')}
-      />
-    );
+    return <MyPage lineProfile={lineProfile} onBack={() => setScreen('booking')} />;
   }
 
-  // ブラウザ経由：予約検索画面
   if (screen === 'search') {
     return (
       <BookingSearch
-        onFound={(bookings) => {
-          setSearchedBookings(bookings);
-          setScreen('searchResult');
-        }}
+        onFound={(bookings) => { setSearchedBookings(bookings); setScreen('searchResult'); }}
         onBack={() => setScreen('booking')}
       />
     );
   }
 
-  // ブラウザ経由：検索結果（マイページをinitialBookingsで初期化）
   if (screen === 'searchResult') {
+    return <MyPage lineProfile={null} initialBookings={searchedBookings} onBack={() => setScreen('search')} />;
+  }
+
+  // 問い合わせ画面（LIFFバージョン）
+  if (screen === 'inquiry') {
     return (
-      <MyPage
-        lineProfile={null}
-        initialBookings={searchedBookings}
-        onBack={() => setScreen('search')}
+      <InquiryPage
+        lineProfile={lineProfile}
+        registeredUser={registeredUser}
+        storePhone={storePhone}
+        onBack={() => setScreen('booking')}
       />
     );
   }
@@ -1761,7 +1570,6 @@ export default function LineLiffBooking() {
           </button>
           <button style={S.btn('outline')} onClick={() => {
             setCompleted(null);
-            // LINE経由はマイページ、ブラウザ経由は検索画面へ
             setScreen(lineProfile ? 'mypage' : 'search');
           }}>
             📋 予約を確認する
@@ -1778,87 +1586,38 @@ export default function LineLiffBooking() {
         <h3 style={S.headerTitle}>🏥 ご予約</h3>
         {lineProfile && <span style={{ fontSize: 11, opacity: 0.8 }}>{lineProfile.displayName} 様</span>}
         {storePhone && <span style={{ fontSize: 10, opacity: 0.8 }}>TEL: {storePhone}</span>}
-        {/* 予約確認ボタン：LINE/ブラウザで遷移先が変わる */}
-        <button
-          onClick={() => setScreen(lineProfile ? 'mypage' : 'search')}
-          style={{
-            background: 'rgba(255,255,255,0.2)',
-            border: '1.5px solid rgba(255,255,255,0.6)',
-            borderRadius: 6,
-            color: '#fff',
-            fontSize: 11,
-            fontWeight: 700,
-            padding: '4px 10px',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            whiteSpace: 'nowrap',
-          }}>
+        {/* 予約確認ボタン */}
+        <button onClick={() => setScreen(lineProfile ? 'mypage' : 'search')}
+          style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
           📋 予約確認
         </button>
-        {/* 未登録かつブラウザ経由の場合：ログイン・新規登録ボタンを表示 */}
+        {/* 問い合わせボタン */}
+        <button onClick={() => setScreen('inquiry')}
+          style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', marginLeft: 4 }}>
+          💬
+        </button>
+        {/* 未登録かつブラウザ経由の場合 */}
         {!registeredUser && !lineProfile && (
           <>
-            <button
-              onClick={() => setScreen('login')}
-              style={{
-                background: 'rgba(255,255,255,0.2)',
-                border: '1.5px solid rgba(255,255,255,0.6)',
-                borderRadius: 6,
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '4px 8px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-                marginLeft: 4,
-              }}>
+            <button onClick={() => setScreen('login')}
+              style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', marginLeft: 4 }}>
               🔑 ログイン
             </button>
-            <button
-              onClick={() => setScreen('register')}
-              style={{
-                background: 'rgba(255,255,255,0.2)',
-                border: '1.5px solid rgba(255,255,255,0.6)',
-                borderRadius: 6,
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '4px 8px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-                marginLeft: 4,
-              }}>
+            <button onClick={() => setScreen('register')}
+              style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', marginLeft: 4 }}>
               📝 新規登録
             </button>
           </>
         )}
-        {/* LINE未登録の場合：新規登録ボタンのみ表示 */}
+        {/* LINE未登録の場合 */}
         {!registeredUser && lineProfile && (
-          <button
-            onClick={() => setScreen('register')}
-            style={{
-              background: 'rgba(255,255,255,0.2)',
-              border: '1.5px solid rgba(255,255,255,0.6)',
-              borderRadius: 6,
-              color: '#fff',
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              marginLeft: 4,
-            }}>
+          <button onClick={() => setScreen('register')}
+            style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', marginLeft: 4 }}>
             📝 新規登録
           </button>
         )}
-        {/* ログイン済みの場合：名前を表示 */}
         {registeredUser && !lineProfile && (
-          <span style={{ fontSize: 11, opacity: 0.85, whiteSpace: 'nowrap' }}>
-            {registeredUser.name} 様
-          </span>
+          <span style={{ fontSize: 11, opacity: 0.85, whiteSpace: 'nowrap' }}>{registeredUser.name} 様</span>
         )}
       </div>
 
@@ -1866,11 +1625,7 @@ export default function LineLiffBooking() {
         {/* ステップインジケーター */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center' }}>
           {STEPS.map(s => (
-            <div key={s.num} style={{
-              width: 28, height: 5, borderRadius: 3,
-              background: s.num <= step ? C.primary : C.border,
-              transition: 'background .3s',
-            }} />
+            <div key={s.num} style={{ width: 28, height: 5, borderRadius: 3, background: s.num <= step ? C.primary : C.border, transition: 'background .3s' }} />
           ))}
         </div>
 
@@ -1880,12 +1635,7 @@ export default function LineLiffBooking() {
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 4 }}>① コースを選んでください</h3>
             <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>ご希望のコースをタップしてください</p>
             {menuList.map(m => (
-              <MenuRadioItem
-                key={m.menuId}
-                menu={m}
-                selected={selection.menuId}
-                onClick={() => { set('menuId', m.menuId); setStep(2); }}
-              />
+              <MenuRadioItem key={m.menuId} menu={m} selected={selection.menuId} onClick={() => { set('menuId', m.menuId); setStep(2); }} />
             ))}
           </div>
         )}
@@ -1898,8 +1648,7 @@ export default function LineLiffBooking() {
               { staffId: 'any', name: '指名なし（空き優先）' },
               ...staffList.filter(s => !selection.menuId || (s.menus || '').includes(selection.menuId)),
             ].map(s => (
-              <div key={s.staffId} style={S.step(selection.staffId === s.staffId)}
-                onClick={() => { set('staffId', s.staffId); setStep(3); }}>
+              <div key={s.staffId} style={S.step(selection.staffId === s.staffId)} onClick={() => { set('staffId', s.staffId); setStep(3); }}>
                 <span style={S.stepNum(selection.staffId === s.staffId)}>●</span>
                 <div>
                   <div style={{ fontWeight: 600 }}>{s.name}</div>
@@ -1916,9 +1665,7 @@ export default function LineLiffBooking() {
           <div>
             <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>③ 日時を選んでください</h3>
             {availLoading ? (
-              <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 13 }}>
-                📅 空き状況を読み込み中...
-              </div>
+              <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 13 }}>📅 空き状況を読み込み中...</div>
             ) : (
               <BookingCalendar
                 availability={availability}
@@ -1950,55 +1697,28 @@ export default function LineLiffBooking() {
             {registeredUser
               ? <div style={S.note}>✅ 登録済み情報から自動入力しました</div>
               : (
-                <div style={{
-                  background: '#fffbeb',
-                  borderLeft: `4px solid ${C.warning}`,
-                  padding: '8px 12px',
-                  borderRadius: '0 4px 4px 0',
-                  fontSize: 11.5,
-                  marginBottom: 12,
-                  color: '#92400e',
-                }}>
+                <div style={{ ...S.noteWarn }}>
                   <div style={{ marginBottom: 6 }}>利用者登録すると次回から自動入力されます</div>
-                  {/* ブラウザ版のみログイン・新規登録リンクを表示 */}
                   {!lineProfile && (
                     <div style={{ display: 'flex', gap: 12 }}>
-                      <span
-                        onClick={() => setScreen('login')}
-                        style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
-                        🔑 ログイン
-                      </span>
-                      <span
-                        onClick={() => setScreen('register')}
-                        style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
-                        📝 新規登録
-                      </span>
+                      <span onClick={() => setScreen('login')} style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>🔑 ログイン</span>
+                      <span onClick={() => setScreen('register')} style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>📝 新規登録</span>
                     </div>
                   )}
                   {lineProfile && (
-                    <span
-                      onClick={() => setScreen('register')}
-                      style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>
-                      登録する →
-                    </span>
+                    <span onClick={() => setScreen('register')} style={{ color: C.primary, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}>登録する →</span>
                   )}
                 </div>
               )
             }
             <label style={S.label}>お名前<span style={S.required}>*</span></label>
-            <input style={S.formInput} type="text" placeholder="山田太郎"
-              value={form.name} onChange={e => setF('name', e.target.value)} />
+            <input style={S.formInput} type="text" placeholder="山田太郎" value={form.name} onChange={e => setF('name', e.target.value)} />
             <label style={S.label}>電話番号</label>
-            <input style={S.formInput} type="tel" placeholder="09012345678"
-              value={form.phone} onChange={e => setF('phone', e.target.value)} />
+            <input style={S.formInput} type="tel" placeholder="09012345678" value={form.phone} onChange={e => setF('phone', e.target.value)} />
             <label style={S.label}>E-Mail</label>
-            <input style={S.formInput} type="email" placeholder="yamada@example.com"
-              value={form.email} onChange={e => setF('email', e.target.value)} />
+            <input style={S.formInput} type="email" placeholder="yamada@example.com" value={form.email} onChange={e => setF('email', e.target.value)} />
             {error && <p style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{error}</p>}
-            <button style={S.btn('primary')} onClick={() => {
-              if (!form.name) { setError('お名前は必須です'); return; }
-              setError(''); setStep(5);
-            }}>次へ →</button>
+            <button style={S.btn('primary')} onClick={() => { if (!form.name) { setError('お名前は必須です'); return; } setError(''); setStep(5); }}>次へ →</button>
             <button style={S.btn('gray')} onClick={() => setStep(3)}>← 戻る</button>
           </div>
         )}
