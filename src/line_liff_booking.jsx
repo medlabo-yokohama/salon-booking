@@ -808,7 +808,16 @@ export default function LineLiffBooking() {
   const [completed, setCompleted]           = useState(null);
   const [calDate, setCalDate]               = useState(new Date());
   const [availLoading, setAvailLoading]     = useState(false);
-  const [screen, setScreen]                 = useState('booking');
+  // URLパラメータで初期画面を切り替え（リッチメニュー対応）
+  const getInitialScreen = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    if (page === 'mypage') return 'mypage';
+  } catch (_) {}
+  return 'booking';
+};
+  const [screen, setScreen] = useState(getInitialScreen());
   const [searchedBookings, setSearchedBookings] = useState([]);
   const [storePhone, setStorePhone]         = useState('');
 
