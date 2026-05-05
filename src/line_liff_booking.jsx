@@ -433,7 +433,8 @@ function LoginPage({ onBack, onLoggedIn }) {
     setLoading(true); setError('');
     try {
       const res = await apiPost({ action: 'loginUser', email: email.trim(), password });
-      if (res.success) { onLoggedIn(res.data); }
+      // ★ GASは data: { user: {...} } で返すので data.user を取り出す
+      if (res.success) { onLoggedIn(res.data.user || res.data); }
       else { setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません'); }
     } catch (e) { setError('通信エラーが発生しました'); }
     setLoading(false);
@@ -699,7 +700,11 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
   const countSlots = (dateStr) => {
     const dayData = availability[dateStr];
     if (!dayData) return 0;
-    if (selectedStaffId && selectedStaffId !== 'any') return (dayData[selectedStaffId] || []).length;
+    if (selectedStaffId && selectedStaffId !== 'any') {
+      // 指定施術者の枠 + 指名なし枠の合計
+      return (dayData[selectedStaffId] || []).length + (dayData['any'] || []).length;
+    }
+    // 全員: anyを含む全スロットのユニーク数
     return [...new Set(Object.values(dayData).flat())].length;
   };
 
