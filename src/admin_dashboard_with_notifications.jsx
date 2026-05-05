@@ -116,7 +116,7 @@ const S = {
   card: { background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.10)', padding: '16px 20px', marginBottom: 16 },
   dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 20 },
   dashCard: (color) => ({ background: C.surface, borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,.08)', padding: '14px 16px', borderTop: `3px solid ${color}` }),
-  badge: (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...({ blue: { background: C.primaryPale, color: C.primary }, green: { background: '#d1fae5', color: '#065f46' }, gray: { background: '#e2e8f0', color: '#475569' } }[c] || {}) }),
+  badge: (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, ...({ blue: { background: C.primaryPale, color: C.primary }, green: { background: '#d1fae5', color: '#065f46' }, gray: { background: '#e2e8f0', color: '#475569' }, red: { background: '#fee2e2', color: '#991b1b' } }[c] || {}) }),
   note: (t) => ({ padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, ...({ warn: { background: '#fef9c3', borderLeft: `4px solid ${C.warning}`, color: '#78350f' }, info: { background: '#eff6ff', borderLeft: `4px solid ${C.primary}`, color: C.primary }, success: { background: '#f0fdf4', borderLeft: `4px solid ${C.success}`, color: '#065f46' } }[t] || {}) }),
   sectionTitle: { fontSize: 14, fontWeight: 700, color: C.primary, marginBottom: 12, paddingBottom: 6, borderBottom: `2px solid ${C.primaryPale}` },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
@@ -1193,6 +1193,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
     slotCapacity:       String(s['同時施術人数'] || '1'),
     slotCapacityCustom: String(s['同時施術人数カスタム'] || '1'),
     refreshSec:         String(s['自動更新間隔（秒）'] || '30'),
+    memberDigits: String(s['会員番号桁数'] || '5'),
   });
 
   const [form, setForm]       = useState(() => buildForm(settings));
@@ -1243,6 +1244,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
       '施術単位（分）':   form.unitMin,
       '同時施術人数':     form.slotCapacity === 'custom' ? form.slotCapacityCustom : form.slotCapacity,
       '自動更新間隔（秒）': form.refreshSec,
+      '会員番号桁数':     form.memberDigits,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -1402,6 +1404,18 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
             </div>
             <div style={S.note('info')}>現在：<b>{form.refreshSec === '0' ? '自動更新なし' : `${form.refreshSec}秒ごとに自動更新`}</b></div>
           </FormRow>
+          <FormRow label="会員番号桁数">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+            {[{l:'3桁（001〜999）',v:'3'},{l:'4桁（0001〜9999）',v:'4'},{l:'5桁（00001〜99999）',v:'5'},{l:'6桁（000001〜999999）',v:'6'}].map(o => (
+            <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+            <input type="radio" name="memberDigits" checked={form.memberDigits === o.v} onChange={() => setForm(p=>({...p,memberDigits:o.v}))} /> {o.l}
+          </label>
+           ))}
+         </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+         ※ 変更後は新規追加・手動編集時から反映されます。既存の会員番号は変わりません。
+        </div>
+        </FormRow>
         </tbody>
       </table>
       <div style={S.btnRow}>
