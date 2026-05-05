@@ -66,6 +66,9 @@ const S = {
   noteSuccess: { background: '#f0fdf4', borderLeft: `4px solid ${C.success}`, padding: '8px 12px', borderRadius: '0 4px 4px 0', fontSize: 11.5, marginTop: 10, color: '#065f46' },
 };
 
+// ============================================================
+// ページ定数
+// ============================================================
 const NAV = [
   { key: 'cal',      label: '予約',     icon: '📅' },
   { key: 'confirm',  label: '予約確認',  icon: '📋' },
@@ -88,8 +91,7 @@ function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook, onGoRegister }) {
     setLoading(true);
     const res = await apiPost({ action: 'loginUser', email, password });
     if (res.success) {
-      // ★ GASは data: { user: {...} } で返すので data.user を取り出す
-      onEmailLogin(res.data.user || res.data);
+      onEmailLogin(res.data);
     } else {
       setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません');
     }
@@ -178,28 +180,18 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // ★ 修正: any キーも含めて空き判定する
+  // 日付の空き状況を判定する
   const getDayStatus = (d) => {
     if (!d) return null;
     const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
     const dayData = availability[dateStr];
-    if (dayData === null) return 'closed';   // 定休日
-    if (!dayData) return 'unknown';          // まだデータなし
-
-    if (selectedStaffId === 'all') {
-      // 全員表示: any の枠数 + 各施術者の枠数の合計で判定
-      const anyCount   = (dayData['any'] || []).length;
-      const staffCount = Object.keys(dayData)
-        .filter(k => k !== 'any')
-        .reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
-      const total = anyCount + staffCount;
-      return total > 0 ? 'available' : 'full';
-    } else {
-      // 特定施術者フィルタ: その施術者の枠で判定（なければany枠で判定）
-      const staffSlots = dayData[selectedStaffId] || [];
-      const anySlots   = dayData['any'] || [];
-      return (staffSlots.length + anySlots.length) > 0 ? 'available' : 'full';
-    }
+    if (dayData === null) return 'closed';
+    if (!dayData) return 'unknown';
+    const staffKeys = selectedStaffId === 'all'
+      ? Object.keys(dayData).filter(k => k !== 'any')
+      : [selectedStaffId];
+    const totalSlots = staffKeys.reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
+    return totalSlots > 0 ? 'available' : 'full';
   };
 
   const weeks = [];
@@ -282,22 +274,17 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
   const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const dayData = availability[dateStr] || {};
 
+  // 施術者フィルタ適用（指名なし含む）
   const allSlots = {};
 
-  // ★ any（指名なし）スロットは常に追加する
-  // 施術者指定時も「指名なし」枠は予約できるため any を必ず含める
-  (dayData['any'] || []).forEach(slot => {
-    if (!allSlots[slot]) allSlots[slot] = [];
-    // 施術者指定時は「その施術者」として表示、全員表示時は「指名なし」として表示
-    if (preSelectedStaffId && preSelectedStaffId !== 'all') {
-      const staff = staffList.find(s => s.staffId === preSelectedStaffId);
-      allSlots[slot].push(staff || { staffId: preSelectedStaffId, name: '指名なし' });
-    } else {
+  // 指名なし枠
+  if (!preSelectedStaffId || preSelectedStaffId === 'all') {
+    (dayData['any'] || []).forEach(slot => {
+      if (!allSlots[slot]) allSlots[slot] = [];
       allSlots[slot].push({ staffId: '', name: '指名なし' });
-    }
-  });
+    });
+  }
 
-  // 施術者IDに対応するスロットも追加する（施術者シフトが登録されている場合）
   const filteredStaff = (preSelectedStaffId && preSelectedStaffId !== 'all')
     ? staffList.filter(s => s.staffId === preSelectedStaffId)
     : staffList;
@@ -305,10 +292,7 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
   filteredStaff.forEach(s => {
     (dayData[s.staffId] || []).forEach(slot => {
       if (!allSlots[slot]) allSlots[slot] = [];
-      // anyで既に追加済みの場合は重複追加しない
-      if (!allSlots[slot].some(existing => existing.staffId === s.staffId)) {
-        allSlots[slot].push(s);
-      }
+      allSlots[slot].push(s);
     });
   });
 
@@ -384,6 +368,7 @@ function BookingFormScreen({ date, slot, staffId, staffList, menuList, user, onB
     setLoading(false);
   };
 
+  // 指名なしの場合は全メニュー、施術者指定の場合は担当メニューのみ
   const staffMenuIds = (staff?.menus || '').split(',').map(m => m.trim()).filter(Boolean);
   const availMenus = (!staffId || staffId === 'any' || staffId === '' || staffMenuIds.length === 0)
     ? menuList
@@ -464,6 +449,9 @@ function BookingCompleteScreen({ bookingId, onBack, storePhone }) {
   );
 }
 
+// ============================================================
+// 日時フォーマットヘルパー
+// ============================================================
 function formatDatetime(raw) {
   if (!raw) return '—';
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(raw))) return String(raw).substring(0, 16);
@@ -474,7 +462,7 @@ function formatDatetime(raw) {
 }
 
 // ============================================================
-// 予約確認画面
+// 予約確認画面（一括キャンセル対応）
 // ============================================================
 function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
   const [bookings, setBookings] = useState([]);
@@ -605,6 +593,7 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
         );
       })}
 
+      {/* 予約詳細モーダル */}
       {selectedBooking && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'flex-end', zIndex: 1000 }}>
           <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px', width: '100%', maxWidth: 480, margin: '0 auto' }}>
@@ -669,8 +658,7 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
     const res = await apiPost({ action: 'registerUser', ...form });
     if (res.success) {
       setDone(true);
-      // ★ GASは data: { userId, memberNumber } で返すので登録情報をセット
-      setTimeout(() => onRegister({ ...form, userId: res.data.userId }), 1500);
+      setTimeout(() => onRegister(res.data), 1500);
     } else {
       setError(res.error?.message || '登録に失敗しました');
     }
@@ -730,9 +718,10 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
 }
 
 // ============================================================
-// 問い合わせ画面
+// 問い合わせ画面（実際にGASへ送信する完全版）
 // ============================================================
 function InquiryScreen({ storePhone, user, storeEmail }) {
+  // カテゴリの選択肢
   const CATEGORIES = [
     { value: 'booking',   label: '予約について' },
     { value: 'treatment', label: '施術について' },
@@ -751,6 +740,7 @@ function InquiryScreen({ storePhone, user, storeEmail }) {
   const [sent,    setSent]    = useState(false);
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
+  // 送信処理（GASのsendInquiryアクションを呼ぶ）
   const handleSend = async () => {
     if (!form.subject.trim()) { setError('件名を入力してください'); return; }
     if (!form.body.trim())    { setError('お問い合わせ内容を入力してください'); return; }
@@ -782,6 +772,7 @@ function InquiryScreen({ storePhone, user, storeEmail }) {
     setLoading(false);
   };
 
+  // 送信完了画面
   if (sent) {
     return (
       <div style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -796,6 +787,7 @@ function InquiryScreen({ storePhone, user, storeEmail }) {
         <button
           style={{ ...S.btn('gray'), margin: '0 auto' }}
           onClick={() => {
+            // フォームをリセットして入力画面に戻る
             setForm({ senderName: user?.name || '', senderEmail: user?.email || '', category: 'booking', subject: '', body: '' });
             setSent(false);
           }}>
@@ -808,6 +800,8 @@ function InquiryScreen({ storePhone, user, storeEmail }) {
   return (
     <div>
       <h3 style={{ fontWeight: 700, color: C.primary, marginBottom: 12 }}>💬 お問い合わせ</h3>
+
+      {/* お電話でのお問い合わせ */}
       {storePhone && (
         <div style={S.card}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 4 }}>📞 お電話でのお問い合わせ</div>
@@ -816,54 +810,111 @@ function InquiryScreen({ storePhone, user, storeEmail }) {
           </a>
         </div>
       )}
+
+      {/* メールでのお問い合わせ */}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8 }}>✉️ メールでのお問い合わせ</div>
+
+      {/* エラー表示 */}
       {error && (
         <div style={{ background: '#fef2f2', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.danger, marginBottom: 12 }}>
           {error}
         </div>
       )}
+
       <table style={S.formTbl}>
         <tbody>
+          {/* お名前（任意） */}
           <tr>
             <th style={S.formTh}>お名前</th>
             <td style={S.formTd}>
-              <input style={S.formInput} type="text" placeholder="山田太郎" value={form.senderName} onChange={e => set('senderName', e.target.value)} />
+              <input
+                style={S.formInput}
+                type="text"
+                placeholder="山田太郎"
+                value={form.senderName}
+                onChange={e => set('senderName', e.target.value)}
+              />
             </td>
           </tr>
+          {/* 返信先メール */}
           <tr>
-            <th style={S.formTh}>返信先メール<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
+            <th style={S.formTh}>
+              返信先メール
+              <span style={{ color: C.danger, fontSize: 11 }}>*</span>
+            </th>
             <td style={S.formTd}>
-              <input style={S.formInput} type="email" placeholder="yamada@example.com" value={form.senderEmail} onChange={e => set('senderEmail', e.target.value)} />
-              {user?.email && <span style={{ color: C.muted, fontSize: 11, display: 'block', marginTop: 3 }}>登録メールアドレスから自動入力</span>}
+              <input
+                style={S.formInput}
+                type="email"
+                placeholder="yamada@example.com"
+                value={form.senderEmail}
+                onChange={e => set('senderEmail', e.target.value)}
+              />
+              {user?.email && (
+                <span style={{ color: C.muted, fontSize: 11, display: 'block', marginTop: 3 }}>
+                  登録メールアドレスから自動入力
+                </span>
+              )}
             </td>
           </tr>
+          {/* カテゴリ */}
           <tr>
             <th style={S.formTh}>種別</th>
             <td style={S.formTd}>
-              <select style={S.formInput} value={form.category} onChange={e => set('category', e.target.value)}>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              <select
+                style={S.formInput}
+                value={form.category}
+                onChange={e => set('category', e.target.value)}>
+                {CATEGORIES.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
               </select>
             </td>
           </tr>
+          {/* 件名 */}
           <tr>
-            <th style={S.formTh}>件名<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
+            <th style={S.formTh}>
+              件名
+              <span style={{ color: C.danger, fontSize: 11 }}>*</span>
+            </th>
             <td style={S.formTd}>
-              <input style={S.formInput} type="text" placeholder="お問い合わせ件名" value={form.subject} onChange={e => set('subject', e.target.value)} />
+              <input
+                style={S.formInput}
+                type="text"
+                placeholder="お問い合わせ件名"
+                value={form.subject}
+                onChange={e => set('subject', e.target.value)}
+              />
             </td>
           </tr>
+          {/* お問い合わせ内容 */}
           <tr>
-            <th style={S.formTh}>内容<span style={{ color: C.danger, fontSize: 11 }}>*</span></th>
+            <th style={S.formTh}>
+              内容
+              <span style={{ color: C.danger, fontSize: 11 }}>*</span>
+            </th>
             <td style={S.formTd}>
-              <textarea style={{ ...S.formInput, height: 120 }} placeholder="内容をご記入ください" value={form.body} onChange={e => set('body', e.target.value)} />
+              <textarea
+                style={{ ...S.formInput, height: 120 }}
+                placeholder="内容をご記入ください"
+                value={form.body}
+                onChange={e => set('body', e.target.value)}
+              />
             </td>
           </tr>
         </tbody>
       </table>
+
+      {/* 送信先の案内 */}
       <div style={{ ...S.note, marginTop: 12 }}>
         ご入力いただいたメールアドレス宛に受付確認メールはお送りしていません。担当者より直接ご連絡いたします。
       </div>
+
       <div style={S.btnRow}>
-        <button style={{ ...S.btn('primary'), marginLeft: 'auto', padding: '8px 24px', fontSize: 13 }} onClick={handleSend} disabled={loading}>
+        <button
+          style={{ ...S.btn('primary'), marginLeft: 'auto', padding: '8px 24px', fontSize: 13 }}
+          onClick={handleSend}
+          disabled={loading}>
           {loading ? '送信中...' : '送信する 📨'}
         </button>
       </div>
@@ -891,7 +942,7 @@ export default function BookingCalendar() {
   const [storeEmail, setStoreEmail] = useState('');
 
   useEffect(() => {
-    // ★ GASは data: { settings: {...} } で返す
+    // 店舗設定を取得する（電話番号・メール）
     apiGet({ action: 'getSettings' }).then(res => {
       if (res.success) {
         setStorePhone(res.data?.settings?.['店舗電話番号'] || '');
@@ -900,27 +951,30 @@ export default function BookingCalendar() {
     });
   }, []);
 
+  // 初期データ取得
   useEffect(() => {
     Promise.all([
-      apiGet({ action: 'getStaff'  }).then(r => r.success && setStaffList(r.data.staff  || [])),
-      apiGet({ action: 'getMenus'  }).then(r => r.success && setMenuList( r.data.menus  || [])),
+      apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
+      apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
     ]);
   }, []);
 
+  // 空き状況取得
   const fetchAvailability = useCallback(async (date) => {
     const d = date || currentDate;
     const res = await apiGet({ action: 'getAvailability', year: d.getFullYear(), month: d.getMonth() + 1 });
-    if (res.success) setAvail(res.data.availability || {});
+    if (res.success) setAvail(res.data.availability);
   }, [currentDate]);
 
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
 
-  // ★ ログイン: GASは data.user で返すので data.user を使う
-  const handleLogin     = (userData) => { setUser(userData); setPage('course'); setNavPage('cal'); };
-  const handleGuestBook = () => { setPage('course'); setNavPage('cal'); };
-  const handleLogout    = () => { setUser(null); setPage('login'); };
+  // ログイン・登録処理
+  const handleLogin      = (userData) => { setUser(userData); setPage('course'); setNavPage('cal'); };
+  const handleGuestBook  = () => { setPage('course'); setNavPage('cal'); };
+  const handleLogout     = () => { setUser(null); setPage('login'); };
   const handleGoRegister = () => { setPage('register-pre'); };
 
+  // ナビゲーション
   const handleNav = (key) => {
     if (key === 'logout') { handleLogout(); return; }
     setNavPage(key);
@@ -930,6 +984,7 @@ export default function BookingCalendar() {
     else if (key === 'inquiry')  setPage('inquiry');
   };
 
+  // ページタイトル取得
   const getTitle = () => {
     const titles = {
       course: 'コース選択', cal: '予約', calDay: '日程選択',
@@ -940,10 +995,12 @@ export default function BookingCalendar() {
     return titles[page] || '予約システム';
   };
 
+  // ログイン画面（ナビなし）
   if (page === 'login') {
     return <LoginScreen onLineLogin={() => {}} onEmailLogin={handleLogin} onGuestBook={handleGuestBook} onGoRegister={handleGoRegister} />;
   }
 
+  // ログイン前の新規登録画面（ナビなし）
   if (page === 'register-pre') {
     return (
       <div style={S.wrap}>
@@ -963,6 +1020,7 @@ export default function BookingCalendar() {
 
   return (
     <div style={S.wrap}>
+      {/* ヘッダー */}
       <div style={S.header}>
         {(page === 'cal' || page === 'calDay' || page === 'form') && (
           <button style={S.backBtn} onClick={() => {
@@ -976,7 +1034,9 @@ export default function BookingCalendar() {
         {storePhone && <span style={{ fontSize: 10, opacity: 0.8 }}>📞 {storePhone}</span>}
       </div>
 
+      {/* コンテンツ */}
       <div style={S.body}>
+        {/* コース選択 */}
         {page === 'course' && (
           <CourseSelectScreen
             menuList={menuList}
@@ -985,6 +1045,7 @@ export default function BookingCalendar() {
           />
         )}
 
+        {/* 月カレンダー */}
         {page === 'cal' && (
           <CalMonthScreen
             availability={availability}
@@ -999,6 +1060,7 @@ export default function BookingCalendar() {
           />
         )}
 
+        {/* 日ビュー */}
         {page === 'calDay' && selectedDate && (
           <CalDayScreen
             availability={availability}
@@ -1015,6 +1077,7 @@ export default function BookingCalendar() {
           />
         )}
 
+        {/* 予約入力フォーム */}
         {page === 'form' && (
           <BookingFormScreen
             date={selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}` : ''}
@@ -1029,10 +1092,12 @@ export default function BookingCalendar() {
           />
         )}
 
+        {/* 予約完了 */}
         {page === 'complete' && (
           <BookingCompleteScreen bookingId={completedBookingId} onBack={() => { setPage('course'); setNavPage('cal'); }} storePhone={storePhone} />
         )}
 
+        {/* 予約確認 */}
         {page === 'confirm' && (
           <BookingConfirmScreen
             user={user}
@@ -1044,6 +1109,7 @@ export default function BookingCalendar() {
           />
         )}
 
+        {/* 利用者登録 */}
         {page === 'register' && (
           <RegisterScreen
             onRegister={userData => { setUser(userData); setPage('course'); setNavPage('cal'); }}
@@ -1051,11 +1117,17 @@ export default function BookingCalendar() {
           />
         )}
 
+        {/* 問い合わせ（ユーザー情報・店舗メールを渡す） */}
         {page === 'inquiry' && (
-          <InquiryScreen storePhone={storePhone} storeEmail={storeEmail} user={user} />
+          <InquiryScreen
+            storePhone={storePhone}
+            storeEmail={storeEmail}
+            user={user}
+          />
         )}
       </div>
 
+      {/* ボトムナビ */}
       <nav style={S.nav}>
         {NAV.map(item => (
           <a key={item.key} style={S.navLink(navPage === item.key)} onClick={() => handleNav(item.key)}>
