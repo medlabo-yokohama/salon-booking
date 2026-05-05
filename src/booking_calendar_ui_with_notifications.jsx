@@ -284,13 +284,20 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
 
   const allSlots = {};
 
-  if (!preSelectedStaffId || preSelectedStaffId === 'all') {
-    (dayData['any'] || []).forEach(slot => {
-      if (!allSlots[slot]) allSlots[slot] = [];
+  // ★ any（指名なし）スロットは常に追加する
+  // 施術者指定時も「指名なし」枠は予約できるため any を必ず含める
+  (dayData['any'] || []).forEach(slot => {
+    if (!allSlots[slot]) allSlots[slot] = [];
+    // 施術者指定時は「その施術者」として表示、全員表示時は「指名なし」として表示
+    if (preSelectedStaffId && preSelectedStaffId !== 'all') {
+      const staff = staffList.find(s => s.staffId === preSelectedStaffId);
+      allSlots[slot].push(staff || { staffId: preSelectedStaffId, name: '指名なし' });
+    } else {
       allSlots[slot].push({ staffId: '', name: '指名なし' });
-    });
-  }
+    }
+  });
 
+  // 施術者IDに対応するスロットも追加する（施術者シフトが登録されている場合）
   const filteredStaff = (preSelectedStaffId && preSelectedStaffId !== 'all')
     ? staffList.filter(s => s.staffId === preSelectedStaffId)
     : staffList;
@@ -298,18 +305,12 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
   filteredStaff.forEach(s => {
     (dayData[s.staffId] || []).forEach(slot => {
       if (!allSlots[slot]) allSlots[slot] = [];
-      allSlots[slot].push(s);
-    });
-  });
-
-  // 全員表示かつ施術者スロットが空の場合はanyスロットを指名なしとして表示
-  if (!preSelectedStaffId || preSelectedStaffId === 'all') {
-    (dayData['any'] || []).forEach(slot => {
-      if (!allSlots[slot]) {
-        allSlots[slot] = [{ staffId: '', name: '指名なし' }];
+      // anyで既に追加済みの場合は重複追加しない
+      if (!allSlots[slot].some(existing => existing.staffId === s.staffId)) {
+        allSlots[slot].push(s);
       }
     });
-  }
+  });
 
   const sortedSlots = Object.keys(allSlots).sort();
 
