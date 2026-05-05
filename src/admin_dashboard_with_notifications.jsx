@@ -4,51 +4,6 @@
 // ============================================================
 import React, { useState, useEffect, useCallback } from 'react';
 
-// ============================================================
-// ★ 高速化パッチ: メモリキャッシュ（セッション中保持）
-// ============================================================
-
-const _cache = {
-  staff: null,
-  menus: null,
-  settings: null,
-};
-
-async function fetchStaffCached() {
-  if (_cache.staff) return _cache.staff;
-  const res = await apiGet({ action: 'getStaff' });
-  if (res.success) _cache.staff = res.data.staff || [];
-  return _cache.staff || [];
-}
-
-async function fetchMenusCached() {
-  if (_cache.menus) return _cache.menus;
-  const res = await apiGet({ action: 'getMenus' });
-  if (res.success) _cache.menus = res.data.menus || [];
-  return _cache.menus || [];
-}
-
-async function fetchSettingsCached() {
-  if (_cache.settings) return _cache.settings;
-  const res = await apiGet({ action: 'getSettings' });
-  if (res.success) _cache.settings = res.data.settings || {};
-  return _cache.settings || {};
-}
-
-function clearCache(key) {
-  if (key) {
-    _cache[key] = null;
-  } else {
-    _cache.staff = null;
-    _cache.menus = null;
-    _cache.settings = null;
-  }
-}
-
-// ============================================================
-// ★ 高速化パッチ ここまで
-// ============================================================
-
 const GAS_URL = import.meta.env.VITE_GAS_URL || '';
 
 const NAV_ITEMS = [
@@ -761,6 +716,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, selectedYear, on
   const [showAdd, setShowAdd]           = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  // 店舗営業時間をsettingsから取得
   const amStart = settings?.['午前開始'] || '09:00';
   const amEnd   = settings?.['午前終了'] || '12:00';
   const pmStart = settings?.['午後開始'] || '13:00';
@@ -783,6 +739,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, selectedYear, on
   const [saved, setSaved]       = useState('');
   const [loading, setLoading]   = useState(false);
 
+  // 今月の予約件数集計（表示年ベース）
   const displayYear = selectedYear || new Date().getFullYear();
   const now = new Date();
   const thisMonth = `${displayYear}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -846,6 +803,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, selectedYear, on
     <div>
       <div style={S.pageHeader}>
         <h2 style={S.pageTitle}>施術者管理</h2>
+        {/* 年表示を動的に */}
         <span style={{ ...S.badge('blue'), marginLeft: 8 }}>{displayYear}年</span>
       </div>
 
@@ -919,6 +877,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, selectedYear, on
       </div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
 
+      {/* 施術者設定モーダル */}
       {editStaff && (
         <Modal title={`${editStaff.name}　勤務設定`} onClose={() => setEditStaff(null)}>
           <div style={S.card}>
@@ -1010,6 +969,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, selectedYear, on
         </Modal>
       )}
 
+      {/* 施術者追加モーダル */}
       {showAdd && (() => {
         const setBulk = (type) => {
           const s = initSchedule();
@@ -1102,6 +1062,7 @@ function StaffScreen({ staffList, menuList, bookings, settings, selectedYear, on
         );
       })()}
 
+      {/* 削除確認モーダル */}
       {deleteTarget && (
         <Modal title="施術者を削除" onClose={() => setDeleteTarget(null)}>
           <p style={{ fontSize: 13, marginBottom: 16 }}>
@@ -1197,7 +1158,7 @@ function ClosedDateCalendar({ closedDatesSet, calDate, onChangeCalDate, onToggle
 }
 
 // ============================================================
-// 店舗管理画面
+// 店舗管理画面（年シート作成機能追加）
 // ============================================================
 function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
   const DAY_NAMES = ['日','月','火','水','木','金','土'];
@@ -1232,12 +1193,14 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
     slotCapacity:       String(s['同時施術人数'] || '1'),
     slotCapacityCustom: String(s['同時施術人数カスタム'] || '1'),
     refreshSec:         String(s['自動更新間隔（秒）'] || '30'),
-    memberDigits:       String(s['会員番号桁数'] || '5'),
+    memberDigits: String(s['会員番号桁数'] || '5'),
   });
 
   const [form, setForm]       = useState(() => buildForm(settings));
   const [saved, setSaved]     = useState(false);
   const [calDate, setCalDate] = useState(new Date());
+
+  // 年シート作成用のstate
   const [createYearMsg, setCreateYearMsg]   = useState('');
   const [creatingYear, setCreatingYear]     = useState(false);
 
@@ -1287,6 +1250,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
     setTimeout(() => setSaved(false), 3000);
   };
 
+  // 翌年シートを作成する
   const handleCreateNextYearSheet = async () => {
     const nextYear = new Date().getFullYear() + 1;
     if (availableYears.includes(nextYear)) {
@@ -1320,11 +1284,14 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
           <FormRow label="電話番号">
             <input style={S.input} type="tel" value={form.storePhone} onChange={e => setForm(p=>({...p,storePhone:e.target.value}))} />
           </FormRow>
+          {/* システム作成者メール（問い合わせ送信先） */}
           <FormRow label="システム作成者メール">
             <input style={S.input} type="email" placeholder="例：developer@example.com"
               value={form.developerEmail} onChange={e => setForm(p=>({...p,developerEmail:e.target.value}))} />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>問い合わせフォームからのメールの送信先です</div>
-          </FormRow>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+              問い合わせフォームからのメールの送信先です
+            </div>
+            </FormRow>
           <FormRow label="定休日（曜日）">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {DAY_NAMES.map(d => (
@@ -1439,16 +1406,16 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
           </FormRow>
           <FormRow label="会員番号桁数">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              {[{l:'3桁（001〜999）',v:'3'},{l:'4桁（0001〜9999）',v:'4'},{l:'5桁（00001〜99999）',v:'5'},{l:'6桁（000001〜999999）',v:'6'}].map(o => (
-                <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="radio" name="memberDigits" checked={form.memberDigits === o.v} onChange={() => setForm(p=>({...p,memberDigits:o.v}))} /> {o.l}
-                </label>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
-              ※ 変更後は新規追加・手動編集時から反映されます。既存の会員番号は変わりません。
-            </div>
-          </FormRow>
+            {[{l:'3桁（001〜999）',v:'3'},{l:'4桁（0001〜9999）',v:'4'},{l:'5桁（00001〜99999）',v:'5'},{l:'6桁（000001〜999999）',v:'6'}].map(o => (
+            <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12.5 }}>
+            <input type="radio" name="memberDigits" checked={form.memberDigits === o.v} onChange={() => setForm(p=>({...p,memberDigits:o.v}))} /> {o.l}
+          </label>
+           ))}
+         </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+         ※ 変更後は新規追加・手動編集時から反映されます。既存の会員番号は変わりません。
+        </div>
+        </FormRow>
         </tbody>
       </table>
       <div style={S.btnRow}>
@@ -1457,6 +1424,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
       </div>
       {saved && <div style={S.note('success')}>✅ 設定を保存しました</div>}
 
+      {/* 年シート管理セクション */}
       <div style={{ ...S.card, marginTop: 24 }}>
         <div style={S.sectionTitle}>📅 予約データシート管理</div>
         <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 12 }}>
@@ -2042,6 +2010,7 @@ function ShiftScreen({ staffList, settings, initialMode, onBack }) {
       </div>
       {saved && <div style={S.note('success')}>✅ {saved}</div>}
 
+      {/* 任意時間入力モーダル */}
       {customTarget && (() => {
         const handleCancel = () => {
           if (customTarget.prevShift) {
@@ -2511,30 +2480,53 @@ function AdminManageScreen({ currentAdminInfo }) {
 }
 
 // ============================================================
+// 【差し替え用】UsersScreen
+//
+// admin_dashboard_with_notifications.jsx を開いて、
+// 以下の範囲を丸ごとこのファイルの内容に置き換えてください。
+//
+// ▼ 削除開始行（この行から）
+// // ============================================================
+// // 利用者管理画面
+// // ============================================================
+// function UsersScreen() {
+//
+// ▼ 削除終了行（UsersScreen の最後の } の次の行まで）
+// ※「メインコンポーネント」のコメントが始まる直前まで
+// ============================================================
+
+// ============================================================
 // 利用者管理画面（会員番号・削除機能追加版）
 // ============================================================
 function UsersScreen() {
+  // ユーザー一覧・検索
   const [users, setUsers]     = useState([]);
   const [query, setQuery]     = useState('');
   const [loading, setLoading] = useState(true);
 
+  // 新規追加モーダル
   const [showAdd, setShowAdd]       = useState(false);
   const [newUser, setNewUser]       = useState({ memberNumber: '', name: '', nameKana: '', lineUserId: '', email: '' });
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError]     = useState('');
 
+  // 削除確認モーダル
   const [deleteTarget, setDeleteTarget]   = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // 会員番号編集モーダル
   const [memberEditTarget, setMemberEditTarget]   = useState(null);
   const [memberEditValue, setMemberEditValue]     = useState('');
   const [memberEditLoading, setMemberEditLoading] = useState(false);
   const [memberEditError, setMemberEditError]     = useState('');
 
+  // 自動採番候補・桁数
   const [nextMemberNumber, setNextMemberNumber] = useState('');
   const [memberDigits, setMemberDigits]         = useState(4);
+
   const [saved, setSaved] = useState('');
 
+  // 次の会員番号を取得する
   const fetchNextMemberNumber = useCallback(async () => {
     try {
       const res = await apiGet({ action: 'getNextMemberNumber' });
@@ -2547,6 +2539,7 @@ function UsersScreen() {
     }
   }, []);
 
+  // ユーザー一覧を取得する
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     const res = await apiGet({ action: 'getUserList', query });
@@ -2561,6 +2554,9 @@ function UsersScreen() {
 
   const showMsg = (msg) => { setSaved(msg); setTimeout(() => setSaved(''), 3000); };
 
+  // ----------------------------------------------------------
+  // 利用者追加
+  // ----------------------------------------------------------
   const openAddModal = async () => {
     setAddError('');
     await fetchNextMemberNumber();
@@ -2594,6 +2590,9 @@ function UsersScreen() {
     setAddLoading(false);
   };
 
+  // ----------------------------------------------------------
+  // 利用者削除
+  // ----------------------------------------------------------
   const handleDeleteUser = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
@@ -2608,6 +2607,9 @@ function UsersScreen() {
     setDeleteLoading(false);
   };
 
+  // ----------------------------------------------------------
+  // 会員番号編集
+  // ----------------------------------------------------------
   const openMemberEditModal = (user) => {
     setMemberEditTarget(user);
     setMemberEditValue(user.memberNumber || '');
@@ -2635,6 +2637,7 @@ function UsersScreen() {
 
   return (
     <div>
+      {/* ページヘッダー */}
       <div style={S.pageHeader}>
         <h2 style={S.pageTitle}>利用者管理</h2>
         <input
@@ -2648,6 +2651,7 @@ function UsersScreen() {
         <Btn v="success" style={{ marginLeft: 'auto' }} onClick={openAddModal}>＋ 利用者を追加</Btn>
       </div>
 
+      {/* 会員番号の案内 */}
       <div style={{ ...S.note('info'), marginBottom: 12 }}>
         📋 会員番号は現在 <strong>{memberDigits}桁</strong> 設定です。
         桁数の変更は「店舗管理」画面から行えます。
@@ -2656,6 +2660,7 @@ function UsersScreen() {
 
       {saved && <div style={{ ...S.note('success'), marginBottom: 12 }}>✅ {saved}</div>}
 
+      {/* 利用者一覧テーブル */}
       {loading ? (
         <p style={{ color: C.muted }}>読み込み中...</p>
       ) : (
@@ -2679,6 +2684,7 @@ function UsersScreen() {
               const memberNumber = u.memberNumber || '未設定';
               return (
                 <tr key={u.userId}>
+                  {/* 会員番号（クリックで編集） */}
                   <td style={{ ...S.td, textAlign: 'center' }}>
                     <button
                       onClick={() => openMemberEditModal(u)}
@@ -2716,6 +2722,9 @@ function UsersScreen() {
         </table>
       )}
 
+      {/* ================================================================
+          利用者追加モーダル
+      ================================================================ */}
       {showAdd && (
         <Modal title="利用者を追加" onClose={() => { setShowAdd(false); setAddError(''); }}>
           {addError && <div style={{ ...S.note('warn'), marginBottom: 8 }}>⚠️ {addError}</div>}
@@ -2760,6 +2769,9 @@ function UsersScreen() {
         </Modal>
       )}
 
+      {/* ================================================================
+          削除確認モーダル
+      ================================================================ */}
       {deleteTarget && (
         <Modal title="🗑️ 利用者を削除" onClose={() => setDeleteTarget(null)}>
           <p style={{ fontSize: 13, marginBottom: 8 }}>
@@ -2786,6 +2798,9 @@ function UsersScreen() {
         </Modal>
       )}
 
+      {/* ================================================================
+          会員番号編集モーダル
+      ================================================================ */}
       {memberEditTarget && (
         <Modal title="✏️ 会員番号を編集" onClose={() => setMemberEditTarget(null)}>
           <p style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>
@@ -2833,6 +2848,7 @@ export default function AdminDashboard() {
   const [viewMode, setViewMode]       = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
 
+  // 年シート対応：選択中の年・利用可能な年一覧
   const [selectedYear, setSelectedYear]     = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([new Date().getFullYear()]);
 
@@ -2846,6 +2862,7 @@ export default function AdminDashboard() {
   const [loading, setLoading]     = useState(false);
   const [shiftMode, setShiftMode] = useState('current');
 
+  // 選択中の年・月で予約を取得
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     const year  = selectedYear;
@@ -2855,6 +2872,7 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [currentDate, selectedYear]);
 
+  // 利用可能な年シート一覧を取得
   const fetchAvailableYears = useCallback(async () => {
     const res = await apiGet({ action: 'getBookingYears' });
     if (res.success && res.data.years.length > 0) {
@@ -2864,15 +2882,15 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    // ★ キャッシュ対応: 初回のみAPIを叩き、2回目以降はキャッシュを返す
     Promise.all([
-      fetchStaffCached().then(data => setStaffList(data)),
-      fetchMenusCached().then(data => setMenuList(data)),
-      fetchSettingsCached().then(data => setSettings(data)),
+      apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
+      apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
+      apiGet({ action: 'getSettings' }).then(r => r.success && setSettings(r.data.settings)),
       fetchAvailableYears(),
     ]);
   }, [isLoggedIn]);
 
+  // 選択年が変わったらcurrentDateの年も合わせる
   useEffect(() => {
     if (selectedYear !== currentDate.getFullYear()) {
       setCurrentDate(new Date(selectedYear, currentDate.getMonth(), 1));
@@ -2901,14 +2919,15 @@ export default function AdminDashboard() {
     await apiPost({ action: 'updateBooking', bookingId, ...updates });
     fetchBookings();
   };
-
-  // ★ 設定保存: キャッシュをクリアして最新を取得
   const handleSaveSettings = async (updates) => {
     const res = await apiPost({ action: 'updateSettings', settings: updates });
     if (res.success) {
-      clearCache('settings');
-      const fresh = await fetchSettingsCached();
-      setSettings(fresh);
+      const fresh = await apiGet({ action: 'getSettings' });
+      if (fresh.success) {
+        setSettings(fresh.data.settings);
+      } else {
+        setSettings(prev => ({ ...prev, ...updates }));
+      }
     } else {
       alert('設定の保存に失敗しました: ' + (res.error?.message || ''));
     }
@@ -2924,6 +2943,8 @@ export default function AdminDashboard() {
             <RefreshBar countdown={countdown} onManualRefresh={fetchBookings} />
             <div style={S.pageHeader}>
               <h2 style={S.pageTitle}>予約管理</h2>
+
+              {/* 年選択セレクトボックス */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
                 <span style={{ fontSize: 12, color: C.muted }}>表示年：</span>
                 <select style={{ ...S.input, width: 100, fontSize: 12 }}
@@ -2937,6 +2958,7 @@ export default function AdminDashboard() {
                   <span style={{ ...S.badge('gray'), fontSize: 10 }}>過去データ</span>
                 )}
               </div>
+
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                 <Btn v={viewMode === 'day' ? 'primary' : 'outline'} onClick={() => setViewMode('day')} style={{ fontSize: 11, padding: '4px 10px' }}>日</Btn>
                 <Btn v={viewMode === 'month' ? 'primary' : 'outline'} onClick={() => setViewMode('month')} style={{ fontSize: 11, padding: '4px 10px' }}>月</Btn>
@@ -2958,7 +2980,7 @@ export default function AdminDashboard() {
           <StaffScreen
             staffList={staffList} menuList={menuList} bookings={bookings}
             settings={settings} selectedYear={selectedYear}
-            onRefreshStaff={async () => { clearCache('staff'); setStaffList(await fetchStaffCached()); }}
+            onRefreshStaff={() => apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff))}
             onShiftPage={(m) => { setShiftMode(m); setCurrentPage('shift'); }}
           />
         );
@@ -2970,7 +2992,7 @@ export default function AdminDashboard() {
           />
         );
       case 'menu':
-        return <MenuScreen menuList={menuList} onRefresh={async () => { clearCache('menus'); setMenuList(await fetchMenusCached()); }} />;
+        return <MenuScreen menuList={menuList} onRefresh={() => apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus))} />;
       case 'message':  return <MessageScreen users={[]} />;
       case 'users':    return <UsersScreen />;
       case 'reminder': return <ReminderScreen settings={settings} onSave={handleSaveSettings} />;
