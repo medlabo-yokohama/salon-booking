@@ -2480,111 +2480,356 @@ function AdminManageScreen({ currentAdminInfo }) {
 }
 
 // ============================================================
-// 利用者管理画面
+// 【差し替え用】UsersScreen
+//
+// admin_dashboard_with_notifications.jsx を開いて、
+// 以下の範囲を丸ごとこのファイルの内容に置き換えてください。
+//
+// ▼ 削除開始行（この行から）
+// // ============================================================
+// // 利用者管理画面
+// // ============================================================
+// function UsersScreen() {
+//
+// ▼ 削除終了行（UsersScreen の最後の } の次の行まで）
+// ※「メインコンポーネント」のコメントが始まる直前まで
+// ============================================================
+
+// ============================================================
+// 利用者管理画面（会員番号・削除機能追加版）
 // ============================================================
 function UsersScreen() {
-  const [users, setUsers]         = useState([]);
-  const [query, setQuery]         = useState('');
-  const [loading, setLoading]     = useState(true);
-  const [showAdd, setShowAdd]     = useState(false);
-  const [newUser, setNewUser]     = useState({ userId: '', name: '', nameKana: '', lineUserId: '', email: '' });
-  const [saved, setSaved]         = useState('');
-  const [addLoading, setAddLoading] = useState(false);
+  // ユーザー一覧・検索
+  const [users, setUsers]     = useState([]);
+  const [query, setQuery]     = useState('');
+  const [loading, setLoading] = useState(true);
 
+  // 新規追加モーダル
+  const [showAdd, setShowAdd]       = useState(false);
+  const [newUser, setNewUser]       = useState({ memberNumber: '', name: '', nameKana: '', lineUserId: '', email: '' });
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError]     = useState('');
+
+  // 削除確認モーダル
+  const [deleteTarget, setDeleteTarget]   = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // 会員番号編集モーダル
+  const [memberEditTarget, setMemberEditTarget]   = useState(null);
+  const [memberEditValue, setMemberEditValue]     = useState('');
+  const [memberEditLoading, setMemberEditLoading] = useState(false);
+  const [memberEditError, setMemberEditError]     = useState('');
+
+  // 自動採番候補・桁数
+  const [nextMemberNumber, setNextMemberNumber] = useState('');
+  const [memberDigits, setMemberDigits]         = useState(4);
+
+  const [saved, setSaved] = useState('');
+
+  // 次の会員番号を取得する
+  const fetchNextMemberNumber = useCallback(async () => {
+    try {
+      const res = await apiGet({ action: 'getNextMemberNumber' });
+      if (res.success) {
+        setNextMemberNumber(res.data.nextMemberNumber || '0001');
+        setMemberDigits(res.data.digits || 4);
+      }
+    } catch (e) {
+      console.error('次の会員番号取得エラー:', e);
+    }
+  }, []);
+
+  // ユーザー一覧を取得する
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     const res = await apiGet({ action: 'getUserList', query });
-    if (res.success) setUsers(res.data.users);
+    if (res.success) setUsers(res.data.users || []);
     setLoading(false);
   }, [query]);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => {
+    fetchUsers();
+    fetchNextMemberNumber();
+  }, []);
+
+  const showMsg = (msg) => { setSaved(msg); setTimeout(() => setSaved(''), 3000); };
+
+  // ----------------------------------------------------------
+  // 利用者追加
+  // ----------------------------------------------------------
+  const openAddModal = async () => {
+    setAddError('');
+    await fetchNextMemberNumber();
+    setNewUser({ memberNumber: '', name: '', nameKana: '', lineUserId: '', email: '' });
+    setShowAdd(true);
+  };
 
   const handleAddUser = async () => {
-    if (!newUser.name || !newUser.nameKana) { alert('氏名とふりがなは必須です'); return; }
+    if (!newUser.name || !newUser.nameKana) { setAddError('氏名とふりがなは必須です'); return; }
+    const memberNum = newUser.memberNumber.trim();
+    if (memberNum && !/^\d+$/.test(memberNum)) { setAddError('会員番号は数字のみ入力してください'); return; }
     setAddLoading(true);
+    setAddError('');
     const res = await apiPost({
-      action: 'addUserByAdmin',
-      userId: newUser.userId || undefined,
-      name: newUser.name,
-      nameKana: newUser.nameKana,
-      lineUserId: newUser.lineUserId || '',
-      email: newUser.email || '',
+      action:       'addUserByAdmin',
+      memberNumber: memberNum || nextMemberNumber,
+      name:         newUser.name.trim(),
+      nameKana:     newUser.nameKana.trim(),
+      lineUserId:   newUser.lineUserId.trim(),
+      email:        newUser.email.trim(),
     });
     if (res.success) {
-      setSaved(`「${newUser.name}」を登録しました`);
-      setTimeout(() => setSaved(''), 3000);
+      showMsg(`「${newUser.name}」を登録しました（会員番号：${res.data.memberNumber}）`);
       fetchUsers();
+      fetchNextMemberNumber();
       setShowAdd(false);
-      setNewUser({ userId: '', name: '', nameKana: '', lineUserId: '', email: '' });
+      setNewUser({ memberNumber: '', name: '', nameKana: '', lineUserId: '', email: '' });
     } else {
-      alert('登録に失敗しました: ' + (res.error?.message || ''));
+      setAddError(res.error?.message || '登録に失敗しました');
     }
     setAddLoading(false);
   };
 
+  // ----------------------------------------------------------
+  // 利用者削除
+  // ----------------------------------------------------------
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    const res = await apiPost({ action: 'deleteUser', userId: deleteTarget.userId });
+    if (res.success) {
+      showMsg(`「${deleteTarget.name}」を削除しました`);
+      setDeleteTarget(null);
+      fetchUsers();
+    } else {
+      alert('削除に失敗しました: ' + (res.error?.message || '不明なエラー'));
+    }
+    setDeleteLoading(false);
+  };
+
+  // ----------------------------------------------------------
+  // 会員番号編集
+  // ----------------------------------------------------------
+  const openMemberEditModal = (user) => {
+    setMemberEditTarget(user);
+    setMemberEditValue(user.memberNumber || '');
+    setMemberEditError('');
+  };
+
+  const handleUpdateMemberNumber = async () => {
+    if (!/^\d+$/.test(memberEditValue.trim())) { setMemberEditError('数字のみ入力してください'); return; }
+    setMemberEditLoading(true);
+    setMemberEditError('');
+    const res = await apiPost({
+      action:       'updateMemberNumber',
+      userId:       memberEditTarget.userId,
+      memberNumber: memberEditValue.trim().padStart(memberDigits, '0'),
+    });
+    if (res.success) {
+      showMsg('会員番号を更新しました');
+      setMemberEditTarget(null);
+      fetchUsers();
+    } else {
+      setMemberEditError(res.error?.message || '更新に失敗しました');
+    }
+    setMemberEditLoading(false);
+  };
+
   return (
     <div>
+      {/* ページヘッダー */}
       <div style={S.pageHeader}>
         <h2 style={S.pageTitle}>利用者管理</h2>
-        <input style={{ ...S.input, width: 220 }} type="text" placeholder="氏名・メール・電話で検索"
-          value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchUsers()} />
+        <input
+          style={{ ...S.input, width: 220 }} type="text"
+          placeholder="氏名・会員番号・メールで検索"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && fetchUsers()}
+        />
         <Btn v="primary" onClick={fetchUsers}>検索</Btn>
-        <Btn v="success" style={{ marginLeft: 'auto' }} onClick={() => setShowAdd(true)}>＋ 利用者を追加</Btn>
+        <Btn v="success" style={{ marginLeft: 'auto' }} onClick={openAddModal}>＋ 利用者を追加</Btn>
       </div>
-      {saved && <div style={S.note('success')}>✅ {saved}</div>}
-      {loading ? <p>読み込み中...</p> : (
+
+      {/* 会員番号の案内 */}
+      <div style={{ ...S.note('info'), marginBottom: 12 }}>
+        📋 会員番号は現在 <strong>{memberDigits}桁</strong> 設定です。
+        桁数の変更は「店舗管理」画面から行えます。
+        会員番号をクリックすると編集できます。
+      </div>
+
+      {saved && <div style={{ ...S.note('success'), marginBottom: 12 }}>✅ {saved}</div>}
+
+      {/* 利用者一覧テーブル */}
+      {loading ? (
+        <p style={{ color: C.muted }}>読み込み中...</p>
+      ) : (
         <table style={S.gridTbl}>
           <thead>
-            <tr>{['氏名','ふりがな','電話番号','E-Mail','LINE','登録日'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            <tr>
+              <th style={S.th}>会員番号</th>
+              <th style={S.th}>氏名</th>
+              <th style={S.th}>ふりがな</th>
+              <th style={S.th}>電話番号</th>
+              <th style={S.th}>E-Mail</th>
+              <th style={S.th}>LINE</th>
+              <th style={S.th}>登録日</th>
+              <th style={S.th}>操作</th>
+            </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
-              <tr><td colSpan={6} style={{ ...S.td, textAlign: 'center', color: C.muted }}>利用者が見つかりません</td></tr>
-            ) : users.map(u => (
-              <tr key={u.userId}>
-                <td style={S.td}>{u.name}</td>
-                <td style={S.td}>{u.nameKana}</td>
-                <td style={S.td}>{fmtPhone(u.phone)}</td>
-                <td style={S.td}>{u.email}</td>
-                <td style={S.td}>{u.lineUserId ? <span style={S.badge('green')}>連携済</span> : <span style={S.badge('gray')}>未連携</span>}</td>
-                <td style={S.td}>{fmtDate(u.createdAt)}</td>
-              </tr>
-            ))}
+              <tr><td colSpan={8} style={{ ...S.td, textAlign: 'center', color: C.muted }}>利用者が見つかりません</td></tr>
+            ) : users.map(u => {
+              const memberNumber = u.memberNumber || '未設定';
+              return (
+                <tr key={u.userId}>
+                  {/* 会員番号（クリックで編集） */}
+                  <td style={{ ...S.td, textAlign: 'center' }}>
+                    <button
+                      onClick={() => openMemberEditModal(u)}
+                      title="クリックして会員番号を編集"
+                      style={{
+                        background: memberNumber === '未設定' ? '#fef3c7' : '#eff6ff',
+                        border: `1px solid ${memberNumber === '未設定' ? '#fcd34d' : '#bfdbfe'}`,
+                        borderRadius: 4, padding: '2px 8px', cursor: 'pointer',
+                        fontSize: 12.5,
+                        color: memberNumber === '未設定' ? '#92400e' : '#1e40af',
+                        fontWeight: 'bold',
+                      }}>
+                      {memberNumber} ✏️
+                    </button>
+                  </td>
+                  <td style={S.td}><b>{u.name}</b></td>
+                  <td style={{ ...S.td, color: C.muted, fontSize: 11.5 }}>{u.nameKana}</td>
+                  <td style={S.td}>{fmtPhone(u.phone)}</td>
+                  <td style={{ ...S.td, fontSize: 11.5 }}>{u.email || '—'}</td>
+                  <td style={{ ...S.td, textAlign: 'center' }}>
+                    {u.lineUserId
+                      ? <span style={S.badge('green')}>連携済</span>
+                      : <span style={S.badge('gray')}>未連携</span>
+                    }
+                  </td>
+                  <td style={{ ...S.td, fontSize: 11.5 }}>{fmtDate(u.createdAt)}</td>
+                  <td style={S.td}>
+                    <Btn v="danger" style={{ fontSize: 11, padding: '3px 10px' }}
+                      onClick={() => setDeleteTarget(u)}>削除</Btn>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
 
+      {/* ================================================================
+          利用者追加モーダル
+      ================================================================ */}
       {showAdd && (
-        <Modal title="利用者を追加" onClose={() => setShowAdd(false)}>
+        <Modal title="利用者を追加" onClose={() => { setShowAdd(false); setAddError(''); }}>
+          {addError && <div style={{ ...S.note('warn'), marginBottom: 8 }}>⚠️ {addError}</div>}
           <table style={S.formTbl}>
             <tbody>
-              <FormRow label="利用者ID">
-                <input style={S.input} type="text" placeholder="自動採番（空白でOK）"
-                  value={newUser.userId} onChange={e => setNewUser(p=>({...p,userId:e.target.value}))} />
+              <FormRow label="会員番号">
+                <input
+                  style={S.input} type="text"
+                  placeholder={`空欄で自動採番（${nextMemberNumber}）`}
+                  value={newUser.memberNumber}
+                  onChange={e => setNewUser(p => ({ ...p, memberNumber: e.target.value.replace(/[^\d]/g, '') }))}
+                  maxLength={10}
+                />
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  数字のみ入力可。空欄のままにすると自動で <b>{nextMemberNumber}</b> が割り当てられます。
+                </div>
               </FormRow>
               <FormRow label="氏名" required>
                 <input style={S.input} type="text" placeholder="横浜　太郎"
                   value={newUser.name} onChange={e => setNewUser(p=>({...p,name:e.target.value}))} />
               </FormRow>
-              <FormRow label="氏名（ふりがな）" required>
+              <FormRow label="ふりがな" required>
                 <input style={S.input} type="text" placeholder="よこはま　たろう"
                   value={newUser.nameKana} onChange={e => setNewUser(p=>({...p,nameKana:e.target.value}))} />
               </FormRow>
-              <FormRow label="LINE ID">
+              <FormRow label="メールアドレス">
+                <input style={S.input} type="email" placeholder="yamada@example.com"
+                  value={newUser.email} onChange={e => setNewUser(p=>({...p,email:e.target.value}))} />
+              </FormRow>
+              <FormRow label="LINE User ID">
                 <input style={S.input} type="text" placeholder="LINE連携時に自動入力（任意）"
                   value={newUser.lineUserId} onChange={e => setNewUser(p=>({...p,lineUserId:e.target.value}))} />
-              </FormRow>
-              <FormRow label="E-Mail">
-                <input style={S.input} type="email" placeholder="手入力（任意）"
-                  value={newUser.email} onChange={e => setNewUser(p=>({...p,email:e.target.value}))} />
               </FormRow>
             </tbody>
           </table>
           <div style={S.btnRow}>
-            <Btn v="gray" onClick={() => setShowAdd(false)}>キャンセル</Btn>
+            <Btn v="gray" onClick={() => { setShowAdd(false); setAddError(''); }}>キャンセル</Btn>
             <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleAddUser}>
               {addLoading ? '登録中...' : '確定'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ================================================================
+          削除確認モーダル
+      ================================================================ */}
+      {deleteTarget && (
+        <Modal title="🗑️ 利用者を削除" onClose={() => setDeleteTarget(null)}>
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            以下の利用者を削除します。この操作は元に戻せません。
+          </p>
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '12px 16px', marginBottom: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{deleteTarget.name}</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>
+              会員番号: {deleteTarget.memberNumber || '未設定'}
+            </div>
+            <div style={{ fontSize: 12.5, color: C.muted }}>
+              メール: {deleteTarget.email || '未設定'}
+            </div>
+          </div>
+          <div style={S.note('warn')}>
+            ※ 過去の予約データは削除されません。利用者情報のみ削除されます。
+          </div>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setDeleteTarget(null)}>キャンセル</Btn>
+            <Btn v="danger" style={{ marginLeft: 'auto' }} onClick={handleDeleteUser}>
+              {deleteLoading ? '削除中...' : '削除する'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ================================================================
+          会員番号編集モーダル
+      ================================================================ */}
+      {memberEditTarget && (
+        <Modal title="✏️ 会員番号を編集" onClose={() => setMemberEditTarget(null)}>
+          <p style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>
+            <b>{memberEditTarget.name}</b> さんの会員番号を変更します。
+          </p>
+          {memberEditError && <div style={{ ...S.note('warn'), marginBottom: 8 }}>⚠️ {memberEditError}</div>}
+          <table style={S.formTbl}>
+            <tbody>
+              <FormRow label={`会員番号（${memberDigits}桁）`}>
+                <input
+                  style={S.input} type="text"
+                  value={memberEditValue}
+                  onChange={e => {
+                    setMemberEditValue(e.target.value.replace(/[^\d]/g, ''));
+                    setMemberEditError('');
+                  }}
+                  maxLength={memberDigits + 2}
+                  autoFocus
+                />
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  ※ 保存時に{memberDigits}桁にゼロ埋めされます
+                </div>
+              </FormRow>
+            </tbody>
+          </table>
+          <div style={S.btnRow}>
+            <Btn v="gray" onClick={() => setMemberEditTarget(null)}>キャンセル</Btn>
+            <Btn v="primary" style={{ marginLeft: 'auto' }} onClick={handleUpdateMemberNumber}>
+              {memberEditLoading ? '更新中...' : '保存する'}
             </Btn>
           </div>
         </Modal>
