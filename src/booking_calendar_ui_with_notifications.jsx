@@ -187,11 +187,18 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
     const dayData = availability[dateStr];
     if (dayData === null) return 'closed';
     if (!dayData) return 'unknown';
-    const staffKeys = selectedStaffId === 'all'
-      ? Object.keys(dayData).filter(k => k !== 'any')
-      : [selectedStaffId];
-    const totalSlots = staffKeys.reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
-    return totalSlots > 0 ? 'available' : 'full';
+    if (selectedStaffId === 'all') {
+      // 全員表示: any の枠数 + 各施術者の枠数の合計で判定
+      const anyCount = (dayData['any'] || []).length;
+      const staffCount = Object.keys(dayData)
+        .filter(k => k !== 'any')
+        .reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
+      return (anyCount + staffCount) > 0 ? 'available' : 'full';
+    } else {
+      // 特定施術者フィルタ時: その施術者の枠だけ見る
+      const count = (dayData[selectedStaffId] || []).length;
+      return count > 0 ? 'available' : 'full';
+    }
   };
 
   const weeks = [];
