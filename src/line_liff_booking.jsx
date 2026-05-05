@@ -433,7 +433,6 @@ function LoginPage({ onBack, onLoggedIn }) {
     setLoading(true); setError('');
     try {
       const res = await apiPost({ action: 'loginUser', email: email.trim(), password });
-      // ★ GASは data: { user: {...} } で返すので data.user を取り出す
       if (res.success) { onLoggedIn(res.data.user || res.data); }
       else { setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません'); }
     } catch (e) { setError('通信エラーが発生しました'); }
@@ -701,7 +700,6 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
     const dayData = availability[dateStr];
     if (!dayData) return 0;
     if (selectedStaffId && selectedStaffId !== 'any') {
-      // 指定施術者の枠 + 指名なし枠の合計
       return (dayData[selectedStaffId] || []).length + (dayData['any'] || []).length;
     }
     // 全員: anyを含む全スロットのユニーク数
@@ -760,7 +758,14 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
 function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot, onSelectSlot }) {
   if (!selectedDate) return null;
   const dayData = availability[selectedDate] || {};
-  let slots = selectedStaffId && selectedStaffId !== 'any' ? (dayData[selectedStaffId] || []) : [...new Set(Object.values(dayData).flat())].sort();
+  let slots;
+  if (selectedStaffId && selectedStaffId !== 'any') {
+    const staffSlots = dayData[selectedStaffId] || [];
+    const anySlots   = dayData['any'] || [];
+    slots = [...new Set([...staffSlots, ...anySlots])].sort();
+  } else {
+    slots = [...new Set(Object.values(dayData).flat())].sort();
+  }
   if (slots.length === 0) return <div style={{ ...S.note, marginTop: 12 }}>この日は空き枠がありません</div>;
   return (
     <div style={{ marginTop: 16 }}>
