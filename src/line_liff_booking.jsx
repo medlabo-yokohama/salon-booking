@@ -699,12 +699,12 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
   const countSlots = (dateStr) => {
     const dayData = availability[dateStr];
     if (!dayData) return 0;
-    // 施術者指定時はその施術者枠＋anyキー（指名なし枠）を合算
+    // 施術者指定時はその施術者枠＋anyキーを合算
     if (selectedStaffId && selectedStaffId !== 'any') {
       const staffSlots = new Set([...(dayData[selectedStaffId] || []), ...(dayData['any'] || [])]);
       return staffSlots.size;
     }
-    // 指名なし時はanyキーを優先、なければ全キーを合算
+    // 指名なし時はanyキーを優先
     if (dayData['any']) return dayData['any'].length;
     return [...new Set(Object.values(dayData).flat())].length;
   };
