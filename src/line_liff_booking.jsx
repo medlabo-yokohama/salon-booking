@@ -896,8 +896,8 @@ export default function LineLiffBooking() {
   const selectedStaffName = isNoStaff ? '指名なし' : (selectedStaff?.name || '—');
 
   // ─── 画面切り替え ───
-  if (screen === 'login') return <LoginPage onBack={() => setScreen('booking')} onLoggedIn={(data) => { setForm({ name: data.name || '', phone: data.phone || '', email: data.email || '' }); setRegisteredUser({ name: data.name, phone: data.phone, email: data.email }); setScreen('booking'); }} />;
-  if (screen === 'register') return <RegisterPage lineProfile={lineProfile} onBack={() => setScreen('booking')} onRegistered={(data) => { setForm({ name: data.name || '', phone: data.phone || '', email: data.email || '' }); setRegisteredUser({ name: data.name, phone: data.phone, email: data.email }); }} />;
+  if (screen === 'login') return <LoginPage onBack={() => setScreen('booking')} onLoggedIn={(data) => { const u = data?.user || data; setForm({ name: u.name || '', phone: u.phone || '', email: u.email || '' }); setRegisteredUser({ name: u.name, phone: u.phone, email: u.email }); setScreen('booking'); }} />;
+  if (screen === 'register') return <RegisterPage lineProfile={lineProfile} onBack={() => setScreen('booking')} onRegistered={(data) => { const u = data?.user || data; setForm({ name: u.name || '', phone: u.phone || '', email: u.email || '' }); setRegisteredUser({ name: u.name, phone: u.phone, email: u.email }); }} />;
   if (screen === 'mypage') return <MyPage lineProfile={lineProfile} onBack={() => setScreen('booking')} />;
   if (screen === 'search') return <BookingSearch onFound={(bookings) => { setSearchedBookings(bookings); setScreen('searchResult'); }} onBack={() => setScreen('booking')} />;
   if (screen === 'searchResult') return <MyPage lineProfile={null} initialBookings={searchedBookings} onBack={() => setScreen('search')} />;
