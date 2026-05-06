@@ -878,10 +878,7 @@ export default function LineLiffBooking() {
         if (r.data.menus)    setMenuList(r.data.menus);
         if (r.data.staff)    setStaffList(r.data.staff);
         if (r.data.storePhone !== undefined) setStorePhone(r.data.storePhone);
-        if (r.data.availability) {
-          const key = `${year}-${String(month).padStart(2, '0')}`;
-          setAvailCache(prev => ({ ...prev, [key]: r.data.availability }));
-        }
+        // 空き状況はgetInitialDataとは別にuseEffectで取得する（体感速度向上のため）
       });
   }, []);
 
