@@ -837,6 +837,10 @@ export default function LineLiffBooking() {
   const isNoStaff = !selection.staffId || selection.staffId === 'any';
 
   useEffect(() => {
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = now.getMonth() + 1;
+
     const initLiff = async () => {
       try {
         await liff.init({ liffId: LIFF_ID });
@@ -845,17 +849,40 @@ export default function LineLiffBooking() {
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           setLineProfile(profile);
-          const res = await apiGet({ action: 'getUserProfile', lineUserId: profile.userId });
-          if (res.success) { const u = res.data?.user || res.data; setRegisteredUser(u); setForm({ name: u.name || '', phone: u.phone || '', email: u.email || '' }); }
+          // LINEプロフィール取得後にユーザー情報を別途取得する
+          apiGet({ action: 'getUserProfile', lineUserId: profile.userId })
+            .then(res => {
+              if (res.success) {
+                const u = res.data?.user || res.data;
+                setRegisteredUser(u);
+                setForm({ name: u.name || '', phone: u.phone || '', email: u.email || '' });
+              }
+            });
         }
       } catch (err) { console.error('LIFF初期化エラー:', err); setLiffReady(true); }
     };
+
+    // LIFFの初期化と並列でgetInitialData（メニュー・施術者・設定・空き状況）を1回で取得する
     initLiff();
-    Promise.all([
-      apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
-      apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
-      apiGet({ action: 'getSettings' }).then(r => r.success && setStorePhone(r.data?.settings?.['店舗電話番号'] || '')),
-    ]);
+    apiGet({ action: 'getInitialData', year, month })
+      .then(r => {
+        if (!r.success) {
+          // 万が一getInitialDataが失敗した場合は個別取得にフォールバックする
+          return Promise.all([
+            apiGet({ action: 'getMenus' }).then(r2 => r2.success && setMenuList(r2.data.menus)),
+            apiGet({ action: 'getStaff' }).then(r2 => r2.success && setStaffList(r2.data.staff)),
+            apiGet({ action: 'getSettings' }).then(r2 => r2.success && setStorePhone(r2.data?.settings?.['店舗電話番号'] || '')),
+          ]);
+        }
+        // 一括で受け取ったデータをセットする
+        if (r.data.menus)    setMenuList(r.data.menus);
+        if (r.data.staff)    setStaffList(r.data.staff);
+        if (r.data.storePhone !== undefined) setStorePhone(r.data.storePhone);
+        if (r.data.availability) {
+          const key = `${year}-${String(month).padStart(2, '0')}`;
+          setAvailCache(prev => ({ ...prev, [key]: r.data.availability }));
+        }
+      });
   }, []);
 
   useEffect(() => {
