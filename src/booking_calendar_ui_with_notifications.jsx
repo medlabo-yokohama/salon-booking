@@ -187,12 +187,12 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
     const dayData = availability[dateStr];
     if (dayData === null) return 'closed';
     if (!dayData) return 'unknown';
-    // anyキー（指名なし枠）も含めて空き判定する
-    const staffKeys = selectedStaffId === 'all'
-      ? Object.keys(dayData)
-      : (selectedStaffId && selectedStaffId !== 'any' ? [selectedStaffId, 'any'] : ['any']);
-    const totalSlots = staffKeys.reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
-    return totalSlots > 0 ? 'available' : 'full';
+    // 施術者指定時はその施術者のスロットのみで判定、全員表示時はanyキーで判定
+    if (selectedStaffId === 'all') {
+      return (dayData['any']?.length || 0) > 0 ? 'available' : 'full';
+    }
+    // 施術者指定時：その施術者のスロットが存在するかで判定
+    return (dayData[selectedStaffId]?.length || 0) > 0 ? 'available' : 'full';
   };
 
   const weeks = [];
@@ -932,7 +932,7 @@ export default function BookingCalendar() {
   const [page, setPage]           = useState('login');
   const [user, setUser]           = useState(null);
   const [availability, setAvail]  = useState({});
-  const [availCache, setAvailCache] = useState({}); // 月ごとのキャッシュ
+  const availCacheRef = React.useRef({}); // 月ごとのキャッシュ（useRefで無限ループ防止）
   const [staffList, setStaffList] = useState([]);
   const [menuList, setMenuList]   = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -967,17 +967,17 @@ export default function BookingCalendar() {
   const fetchAvailability = useCallback(async (date) => {
     const d = date || currentDate;
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    // キャッシュがあればそれを使う
-    if (availCache[key]) {
-      setAvail(availCache[key]);
+    // キャッシュがあればそれを使う（useRefなので依存配列に不要）
+    if (availCacheRef.current[key]) {
+      setAvail(availCacheRef.current[key]);
       return;
     }
     const res = await apiGet({ action: 'getAvailability', year: d.getFullYear(), month: d.getMonth() + 1 });
     if (res.success) {
-      setAvailCache(prev => ({ ...prev, [key]: res.data.availability }));
+      availCacheRef.current[key] = res.data.availability;
       setAvail(res.data.availability);
     }
-  }, [currentDate, availCache]);
+  }, [currentDate]);
 
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
 
