@@ -275,27 +275,29 @@ function CalDayScreen({ availability, currentDate, staffList, menuList, onSelect
   const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const dayData = availability[dateStr] || {};
 
-  // 施術者フィルタ適用（指名なし含む）
+  // 施術者フィルタ適用
   const allSlots = {};
 
-  // 指名なし枠
   if (!preSelectedStaffId || preSelectedStaffId === 'all') {
+    // 全員表示：指名なし枠＋各施術者の枠を表示する
     (dayData['any'] || []).forEach(slot => {
       if (!allSlots[slot]) allSlots[slot] = [];
       allSlots[slot].push({ staffId: '', name: '指名なし' });
     });
-  }
-
-  const filteredStaff = (preSelectedStaffId && preSelectedStaffId !== 'all')
-    ? staffList.filter(s => s.staffId === preSelectedStaffId)
-    : staffList;
-
-  filteredStaff.forEach(s => {
-    (dayData[s.staffId] || []).forEach(slot => {
-      if (!allSlots[slot]) allSlots[slot] = [];
-      allSlots[slot].push(s);
+    staffList.forEach(s => {
+      (dayData[s.staffId] || []).forEach(slot => {
+        if (!allSlots[slot]) allSlots[slot] = [];
+        allSlots[slot].push(s);
+      });
     });
-  });
+  } else {
+    // 施術者指定：その施術者のスロットのみ表示する
+    const targetStaff = staffList.find(s => s.staffId === preSelectedStaffId);
+    (dayData[preSelectedStaffId] || []).forEach(slot => {
+      if (!allSlots[slot]) allSlots[slot] = [];
+      allSlots[slot].push(targetStaff || { staffId: preSelectedStaffId, name: '指名あり' });
+    });
+  }
 
   const sortedSlots = Object.keys(allSlots).sort();
 
@@ -930,6 +932,7 @@ export default function BookingCalendar() {
   const [page, setPage]           = useState('login');
   const [user, setUser]           = useState(null);
   const [availability, setAvail]  = useState({});
+  const [availCache, setAvailCache] = useState({}); // 月ごとのキャッシュ
   const [staffList, setStaffList] = useState([]);
   const [menuList, setMenuList]   = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -960,12 +963,21 @@ export default function BookingCalendar() {
     ]);
   }, []);
 
-  // 空き状況取得
+  // 空き状況取得（月ごとにキャッシュして再取得を防ぐ）
   const fetchAvailability = useCallback(async (date) => {
     const d = date || currentDate;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    // キャッシュがあればそれを使う
+    if (availCache[key]) {
+      setAvail(availCache[key]);
+      return;
+    }
     const res = await apiGet({ action: 'getAvailability', year: d.getFullYear(), month: d.getMonth() + 1 });
-    if (res.success) setAvail(res.data.availability);
-  }, [currentDate]);
+    if (res.success) {
+      setAvailCache(prev => ({ ...prev, [key]: res.data.availability }));
+      setAvail(res.data.availability);
+    }
+  }, [currentDate, availCache]);
 
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
 
