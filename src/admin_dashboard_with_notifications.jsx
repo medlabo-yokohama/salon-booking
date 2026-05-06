@@ -1194,6 +1194,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
     slotCapacityCustom: String(s['同時施術人数カスタム'] || '1'),
     refreshSec:         String(s['自動更新間隔（秒）'] || '30'),
     memberDigits: String(s['会員番号桁数'] || '5'),
+    notifyStore: s['予約時店舗通知'] === 'true',
   });
 
   const [form, setForm]       = useState(() => buildForm(settings));
@@ -1245,6 +1246,7 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
       '同時施術人数':     form.slotCapacity === 'custom' ? form.slotCapacityCustom : form.slotCapacity,
       '自動更新間隔（秒）': form.refreshSec,
       '会員番号桁数':     form.memberDigits,
+      '予約時店舗通知':   String(form.notifyStore),
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -1292,6 +1294,17 @@ function StoreScreen({ settings, onSave, availableYears = [], onYearCreated }) {
               問い合わせフォームからのメールの送信先です
             </div>
             </FormRow>
+          {/* 予約時店舗通知 */}
+          <FormRow label="予約時店舗通知メール">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.notifyStore}
+                onChange={e => setForm(p => ({ ...p, notifyStore: e.target.checked }))} />
+              <span style={{ fontSize: 13 }}>予約確定時に店舗メールへ通知する</span>
+            </label>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+              ONにすると新規予約が入った際に「店舗メール」宛に通知メールが届きます
+            </div>
+          </FormRow>
           <FormRow label="定休日（曜日）">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {DAY_NAMES.map(d => (
