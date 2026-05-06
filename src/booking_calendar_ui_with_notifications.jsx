@@ -946,21 +946,37 @@ export default function BookingCalendar() {
   const [storeEmail, setStoreEmail] = useState('');
 
   useEffect(() => {
-    // 店舗設定を取得する（電話番号・メール）
-    apiGet({ action: 'getSettings' }).then(res => {
-      if (res.success) {
-        setStorePhone(res.data?.settings?.['店舗電話番号'] || '');
-        setStoreEmail(res.data?.settings?.['店舗メール'] || '');
-      }
-    });
-  }, []);
-
-  // 初期データ取得
-  useEffect(() => {
-    Promise.all([
-      apiGet({ action: 'getStaff' }).then(r => r.success && setStaffList(r.data.staff)),
-      apiGet({ action: 'getMenus' }).then(r => r.success && setMenuList(r.data.menus)),
-    ]);
+    // getInitialDataで全初期データを1回のリクエストで取得する（高速化）
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = now.getMonth() + 1;
+    apiGet({ action: 'getInitialData', year, month })
+      .then(r => {
+        if (!r.success) {
+          // 万が一失敗した場合は個別取得にフォールバックする
+          return Promise.all([
+            apiGet({ action: 'getSettings' }).then(res => {
+              if (res.success) {
+                setStorePhone(res.data?.settings?.['店舗電話番号'] || '');
+                setStoreEmail(res.data?.settings?.['店舗メール'] || '');
+              }
+            }),
+            apiGet({ action: 'getStaff' }).then(res => res.success && setStaffList(res.data.staff)),
+            apiGet({ action: 'getMenus' }).then(res => res.success && setMenuList(res.data.menus)),
+          ]);
+        }
+        // 一括で受け取ったデータをセットする
+        if (r.data.staff)    setStaffList(r.data.staff);
+        if (r.data.menus)    setMenuList(r.data.menus);
+        if (r.data.storePhone !== undefined) setStorePhone(r.data.storePhone);
+        if (r.data.settings) setStoreEmail(r.data.settings['店舗メール'] || '');
+        // 空き状況もまとめてキャッシュする
+        if (r.data.availability) {
+          const key = `${year}-${String(month).padStart(2, '0')}`;
+          availCacheRef.current[key] = r.data.availability;
+          setAvail(r.data.availability);
+        }
+      });
   }, []);
 
   // 空き状況取得（月ごとにキャッシュして再取得を防ぐ）
