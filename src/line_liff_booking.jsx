@@ -699,7 +699,13 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
   const countSlots = (dateStr) => {
     const dayData = availability[dateStr];
     if (!dayData) return 0;
-    if (selectedStaffId && selectedStaffId !== 'any') return (dayData[selectedStaffId] || []).length;
+    // 施術者指定時はその施術者枠＋anyキー（指名なし枠）を合算
+    if (selectedStaffId && selectedStaffId !== 'any') {
+      const staffSlots = new Set([...(dayData[selectedStaffId] || []), ...(dayData['any'] || [])]);
+      return staffSlots.size;
+    }
+    // 指名なし時はanyキーを優先、なければ全キーを合算
+    if (dayData['any']) return dayData['any'].length;
     return [...new Set(Object.values(dayData).flat())].length;
   };
 
@@ -755,7 +761,15 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
 function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot, onSelectSlot }) {
   if (!selectedDate) return null;
   const dayData = availability[selectedDate] || {};
-  let slots = selectedStaffId && selectedStaffId !== 'any' ? (dayData[selectedStaffId] || []) : [...new Set(Object.values(dayData).flat())].sort();
+  // 指名なし時はanyキーを優先、施術者指定時はその施術者枠＋anyキーを合算
+  let slots;
+  if (selectedStaffId && selectedStaffId !== 'any') {
+    slots = [...new Set([...(dayData[selectedStaffId] || []), ...(dayData['any'] || [])])].sort();
+  } else if (dayData['any']) {
+    slots = [...dayData['any']].sort();
+  } else {
+    slots = [...new Set(Object.values(dayData).flat())].sort();
+  }
   if (slots.length === 0) return <div style={{ ...S.note, marginTop: 12 }}>この日は空き枠がありません</div>;
   return (
     <div style={{ marginTop: 16 }}>
