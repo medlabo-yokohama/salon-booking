@@ -699,10 +699,9 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
   const countSlots = (dateStr) => {
     const dayData = availability[dateStr];
     if (!dayData) return 0;
-    // 施術者指定時はその施術者枠＋anyキーを合算
+    // 施術者指定時はその施術者のスロット数のみ
     if (selectedStaffId && selectedStaffId !== 'any') {
-      const staffSlots = new Set([...(dayData[selectedStaffId] || []), ...(dayData['any'] || [])]);
-      return staffSlots.size;
+      return (dayData[selectedStaffId] || []).length;
     }
     // 指名なし時はanyキーを優先
     if (dayData['any']) return dayData['any'].length;
@@ -761,10 +760,10 @@ function BookingCalendar({ availability, selectedStaffId, onSelectDate, selected
 function SlotPicker({ availability, selectedDate, selectedStaffId, selectedSlot, onSelectSlot }) {
   if (!selectedDate) return null;
   const dayData = availability[selectedDate] || {};
-  // 指名なし時はanyキーを優先、施術者指定時はその施術者枠＋anyキーを合算
+  // 施術者指定時はその施術者のスロットのみ、指名なし時はanyキーを使用
   let slots;
   if (selectedStaffId && selectedStaffId !== 'any') {
-    slots = [...new Set([...(dayData[selectedStaffId] || []), ...(dayData['any'] || [])])].sort();
+    slots = [...(dayData[selectedStaffId] || [])].sort();
   } else if (dayData['any']) {
     slots = [...dayData['any']].sort();
   } else {
