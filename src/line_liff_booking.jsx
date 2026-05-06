@@ -433,7 +433,7 @@ function LoginPage({ onBack, onLoggedIn }) {
     setLoading(true); setError('');
     try {
       const res = await apiPost({ action: 'loginUser', email: email.trim(), password });
-      if (res.success) { onLoggedIn(res.data); }
+      if (res.success) { onLoggedIn(res.data?.user || res.data); }
       else { setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません'); }
     } catch (e) { setError('通信エラーが発生しました'); }
     setLoading(false);
@@ -846,7 +846,7 @@ export default function LineLiffBooking() {
           const profile = await liff.getProfile();
           setLineProfile(profile);
           const res = await apiGet({ action: 'getUserProfile', lineUserId: profile.userId });
-          if (res.success) { setRegisteredUser(res.data); setForm({ name: res.data.name, phone: res.data.phone || '', email: res.data.email || '' }); }
+          if (res.success) { const u = res.data?.user || res.data; setRegisteredUser(u); setForm({ name: u.name || '', phone: u.phone || '', email: u.email || '' }); }
         }
       } catch (err) { console.error('LIFF初期化エラー:', err); setLiffReady(true); }
     };
