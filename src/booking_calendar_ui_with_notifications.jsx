@@ -477,7 +477,7 @@ function BookingConfirmScreen({ user, onCancel, staffList, menuList }) {
 
   const fetchBookings = async () => {
     if (!user?.userId) { setLoading(false); return; }
-    const res = await apiGet({ action: 'getUserBookings', userId: user.userId });
+    const res = await apiGet({ action: 'getUserBookings', userId: user.userId || '', email: user.email || '' });
     if (res.success) setBookings(res.data.bookings || []);
     setLoading(false);
   };
@@ -970,12 +970,7 @@ export default function BookingCalendar() {
         if (r.data.menus)    setMenuList(r.data.menus);
         if (r.data.storePhone !== undefined) setStorePhone(r.data.storePhone);
         if (r.data.settings) setStoreEmail(r.data.settings['店舗メール'] || '');
-        // 空き状況もまとめてキャッシュする
-        if (r.data.availability) {
-          const key = `${year}-${String(month).padStart(2, '0')}`;
-          availCacheRef.current[key] = r.data.availability;
-          setAvail(r.data.availability);
-        }
+        // 空き状況はgetInitialDataとは別に非同期で取得する（体感速度向上のため）
       });
   }, []);
 
