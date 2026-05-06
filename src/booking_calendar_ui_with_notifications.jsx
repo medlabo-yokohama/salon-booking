@@ -91,7 +91,7 @@ function LoginScreen({ onLineLogin, onEmailLogin, onGuestBook, onGoRegister }) {
     setLoading(true);
     const res = await apiPost({ action: 'loginUser', email, password });
     if (res.success) {
-      onEmailLogin(res.data);
+      onEmailLogin(res.data?.user || res.data);
     } else {
       setError(res.error?.message || 'メールアドレスまたはパスワードが正しくありません');
     }
@@ -187,9 +187,10 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
     const dayData = availability[dateStr];
     if (dayData === null) return 'closed';
     if (!dayData) return 'unknown';
+    // anyキー（指名なし枠）を含めて空き判定する
     const staffKeys = selectedStaffId === 'all'
-      ? Object.keys(dayData).filter(k => k !== 'any')
-      : [selectedStaffId];
+      ? Object.keys(dayData)
+      : (selectedStaffId && selectedStaffId !== 'any' ? [selectedStaffId, 'any'] : ['any']);
     const totalSlots = staffKeys.reduce((sum, sid) => sum + (dayData[sid]?.length || 0), 0);
     return totalSlots > 0 ? 'available' : 'full';
   };
@@ -658,7 +659,7 @@ function RegisterScreen({ onRegister, onBackToLogin }) {
     const res = await apiPost({ action: 'registerUser', ...form });
     if (res.success) {
       setDone(true);
-      setTimeout(() => onRegister(res.data), 1500);
+      setTimeout(() => onRegister(res.data?.user || res.data), 1500);
     } else {
       setError(res.error?.message || '登録に失敗しました');
     }
