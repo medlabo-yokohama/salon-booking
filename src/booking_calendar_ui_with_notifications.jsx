@@ -187,7 +187,7 @@ function CalMonthScreen({ availability, currentDate, onChangeDate, onSelectDay, 
     const dayData = availability[dateStr];
     if (dayData === null) return 'closed';
     if (!dayData) return 'unknown';
-    // anyキー（指名なし枠）を含めて空き判定する
+    // anyキー（指名なし枠）も含めて空き判定する
     const staffKeys = selectedStaffId === 'all'
       ? Object.keys(dayData)
       : (selectedStaffId && selectedStaffId !== 'any' ? [selectedStaffId, 'any'] : ['any']);
